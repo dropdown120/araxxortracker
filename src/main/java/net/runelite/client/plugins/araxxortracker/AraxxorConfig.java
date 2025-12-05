@@ -116,7 +116,7 @@ public interface AraxxorConfig extends Config
 	@ConfigItem(
 		keyName = "showRotationBestTimes",
 		name = "Show Rotation Best Times",
-		description = "Show best times for each starting egg rotation (⚪ White, 🔴 Red, 🟢 Green) instead of single best time",
+		description = "Show best times for each starting egg rotation (White, Red, Green) instead of single best time",
 		position = 1,
 		section = statsSection
 	)

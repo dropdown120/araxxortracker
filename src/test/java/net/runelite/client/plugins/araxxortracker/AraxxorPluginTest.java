@@ -1,13 +1,13 @@
 package net.runelite.client.plugins.araxxortracker;
 
 import net.runelite.client.RuneLite;
-import net.runelite.client.externalplugins.ExternalPluginManager;
 
 public class AraxxorPluginTest
 {
 	public static void main(String[] args) throws Exception
 	{
-		ExternalPluginManager.loadBuiltin(AraxxorPlugin.class);
+		// Plugin is automatically discovered via classpath scanning
+		// Don't use loadBuiltin() as it causes duplicate plugin registration
 		RuneLite.main(args);
 	}
 }

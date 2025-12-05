@@ -6,15 +6,12 @@ import java.awt.Dimension;
 import java.awt.Graphics2D;
 import java.awt.Rectangle;
 import javax.inject.Inject;
-import lombok.extern.slf4j.Slf4j;
 import net.runelite.client.ui.overlay.OverlayPanel;
 import net.runelite.client.ui.overlay.components.LineComponent;
 import net.runelite.client.util.ColorUtil;
 
-@Slf4j
 class AraxxorOverlay extends OverlayPanel
 {
-	// ==================== CONSTANTS ====================
 	private static final Color COLOR_WHITE = Color.WHITE;
 	private static final Color COLOR_GOLD = new Color(255, 215, 0);
 	private static final Color COLOR_GREEN_SUCCESS = new Color(100, 220, 100);
@@ -57,7 +54,6 @@ class AraxxorOverlay extends OverlayPanel
 	private static final String LABEL_TOTAL = "Time:";
 	private static final String LABEL_TIME = "Time:";
 	private static final String LABEL_START = "Start:";
-	private static final String LABEL_NEXT = "Next:";
 	private static final String LABEL_HITS = "Hits:";
 	private static final String LABEL_AVG_HIT = "Avg Hit:";
 	private static final String LABEL_DPS = "DPS:";
@@ -113,7 +109,6 @@ class AraxxorOverlay extends OverlayPanel
 	@Override
 	public Dimension render(Graphics2D graphics)
 	{
-		// Clear panel to ensure clean state when switching modes
 		panelComponent.getChildren().clear();
 		
 		boolean hasFightStarted = plugin.getFightStartTime() != -1;
@@ -138,16 +133,13 @@ class AraxxorOverlay extends OverlayPanel
 				plugin.resetPhaseIfNotInArea();
 			}
 			
-			// Check overlay mode early to handle minimal mode correctly
 			OverlayMode overlayMode = config.overlayMode();
 			boolean isFightActive = plugin.isFightActive();
 			boolean bossReached0Hp = plugin.isAraxxorReachedZeroHp();
 			boolean showAsFightEnded = !isFightActive || bossReached0Hp;
 			
-		// In minimal mode, show overlay during and after fight
 		if (overlayMode == OverlayMode.MINIMAL)
 		{
-			// Check visibility conditions
 			if (!isInBossArea && !config.showWhenInactive())
 			{
 				return null;
@@ -160,7 +152,6 @@ class AraxxorOverlay extends OverlayPanel
 			
 			setupPanelStyling(true);
 			
-			// If no fight started, show waiting message
 			if (!hasFightStarted)
 			{
 				renderWaitingSection();
@@ -174,59 +165,42 @@ class AraxxorOverlay extends OverlayPanel
 			long rotationBestTime = currentRotationStart != null ? getRotationBestTime(currentRotationStart) : -1;
 			long overallBestKillTime = plugin.getBestKillTime();
 			
-			// Show next egg countdown (egg rotation) - always white in minimal mode
-			if (!showAsFightEnded)
-			{
-				renderNextEggMinimal();
-			}
-			
-			// Calculate split for timer color determination
 			long totalTime = elapsedTime;
 			SplitResult totalSplit = showLiveSplits ? calculateTotalTimeSplit(totalTime, comparisonMode, currentRotationStart, rotationBestTime, overallBestKillTime) : SplitResult.none();
 			
-			// Determine split color: red for over time, green for good with star
 			Color splitColor = COLOR_WHITE;
 			if (showLiveSplits && !totalSplit.text.isEmpty())
 			{
 				if (totalSplit.color == COLOR_RED)
 				{
-					// Slower than comparison - red
 					splitColor = COLOR_RED;
 				}
 				else if (totalSplit.color == COLOR_GOLD)
 				{
-					// Personal best - green with star (totalSplit.text already contains " ★")
 					splitColor = COLOR_GREEN_SUCCESS;
 				}
 				else if (totalSplit.color == COLOR_GREEN_SUCCESS)
 				{
-					// Faster than comparison - green
 					splitColor = COLOR_GREEN_SUCCESS;
 				}
 			}
 			
-			// Show timer with split - "Time:" label and time text are white, split is colored
 			String totalTimeText = formatTimeSimple(totalTime);
 			String rightText = totalTimeText;
 			
 			if (showLiveSplits && !totalSplit.text.isEmpty())
 			{
-				// Apply the appropriate color to the split text (red for over time, green for good/PB)
 				rightText += formatWithColor(totalSplit.text, splitColor);
 			}
 			
-			// "Time:" label and time value are white
 			addLine(LABEL_TIME, rightText, COLOR_WHITE);
 			
 			return super.render(graphics);
 		}
 		
-		// Main overlay mode - continue with normal logic
-		// "Show Always" is the master - if disabled, use "Show Pre-Fight Stats" logic
 		boolean showAlways = config.showWhenInactive();
 		if (!showAlways)
 		{
-			// If "Show Always" is disabled, use "Show Pre-Fight Stats" logic
 			if (!isInBossArea && !config.showPreFightStats())
 			{
 				return null;
@@ -246,7 +220,6 @@ class AraxxorOverlay extends OverlayPanel
 		}
 		else
 		{
-			// "Show Always" is enabled - show pre-fight stats when not in boss area
 			if (!isInBossArea && config.showPreFightStats())
 			{
 				setupPanelStyling();
@@ -276,7 +249,6 @@ class AraxxorOverlay extends OverlayPanel
 		long overallBestTimeToEnrage = plugin.getBestTimeToEnrage();
 		long overallBestTimeInEnrage = plugin.getBestTimeInEnrage();
 
-		// Render main overlay
 		setupPanelStyling();
 
 		StartRotationInfo startRotationInfo = null;
@@ -325,8 +297,6 @@ class AraxxorOverlay extends OverlayPanel
 		return mainDimension;
 	}
 	
-	// ==================== HELPER METHODS ====================
-	
 	private void setupPanelStyling()
 	{
 		setupPanelStyling(false);
@@ -341,7 +311,6 @@ class AraxxorOverlay extends OverlayPanel
 	
 	private void renderActiveFightSection()
 	{
-		renderNextEgg();
 	}
 
 	/**
@@ -663,8 +632,6 @@ class AraxxorOverlay extends OverlayPanel
 		graphics.drawString(rotationInfo.rotation.getIcon(), rightTextStartX, yPos);
 	}
 	
-	// ==================== SPLIT CALCULATION ====================
-	
 	private SplitResult calculateSplitForPhase(long currentTime, boolean isNormalPhase, int thresholdSeconds, SplitComparisonMode comparisonMode, AraxxorEggType currentRotationStart, long rotationBestTime, long overallBestTime)
 	{
 		long diff = calculateDiff(currentTime, isNormalPhase, comparisonMode, currentRotationStart, rotationBestTime, overallBestTime);
@@ -749,57 +716,43 @@ class AraxxorOverlay extends OverlayPanel
 		
 		if (mode == SplitComparisonMode.TARGET)
 		{
-			// Use target total time if set
 			int targetSeconds = config.targetTotalTime();
 			if (targetSeconds > 0)
 			{
 				compareTime = targetSeconds * 1000L;
 			}
-			// If no target time exists, fall back to best time
 			if (compareTime <= 0)
 			{
-				// Use cached rotation and overall best times (performance optimization)
-				// Check if this is a PB (either rotation-specific or overall)
 				isPB = (rotationBestTime > 0 && totalTime == rotationBestTime) ||
 					   (overallBestKillTime > 0 && totalTime == overallBestKillTime);
 				
-				// Use rotation best time for comparison if available, otherwise use overall best
 				compareTime = rotationBestTime > 0 ? rotationBestTime : overallBestKillTime;
 			}
 		}
 		else if (mode == SplitComparisonMode.LAST_KILL)
 		{
-			// Calculate total time from last fight phase times
 			long lastNormal = plugin.getLastFightNormalTime();
 			long lastEnrage = plugin.getLastFightEnrageTime();
 			if (lastNormal > 0)
 			{
 				compareTime = lastNormal + (lastEnrage > 0 ? lastEnrage : 0);
 			}
-			// If no last kill data exists, fall back to best time
 			if (compareTime <= 0)
 			{
-				// Use cached rotation and overall best times (performance optimization)
-				// Check if this is a PB (either rotation-specific or overall)
 				isPB = (rotationBestTime > 0 && totalTime == rotationBestTime) ||
 					   (overallBestKillTime > 0 && totalTime == overallBestKillTime);
 				
-				// Use rotation best time for comparison if available, otherwise use overall best
 				compareTime = rotationBestTime > 0 ? rotationBestTime : overallBestKillTime;
 			}
 		}
 		else
 		{
-			// PERSONAL_BEST mode - use cached rotation and overall best times
-			// Check if this is a PB (either rotation-specific or overall)
 			isPB = (rotationBestTime > 0 && totalTime == rotationBestTime) ||
 				   (overallBestKillTime > 0 && totalTime == overallBestKillTime);
 			
-			// Use rotation best time for comparison if available, otherwise use overall best
 			compareTime = rotationBestTime > 0 ? rotationBestTime : overallBestKillTime;
 		}
 		
-		// If no comparison time exists, can't show split
 		if (compareTime <= 0)
 		{
 			return SplitResult.none();
@@ -883,8 +836,6 @@ class AraxxorOverlay extends OverlayPanel
 		return plugin.getRotationBestDamage(rotation);
 	}
 	
-	// ==================== UTILITY METHODS ====================
-	
 	private void addSeparator()
 	{
 		panelComponent.getChildren().add(LineComponent.builder()
@@ -901,223 +852,6 @@ class AraxxorOverlay extends OverlayPanel
 			.rightColor(rightColor)
 			.build());
 	}
-	private static final double TICKS_TO_SECONDS = 0.6;
-	
-	private void renderNextEgg()
-	{
-		int ticksRemaining = plugin.getTicksUntilNextHatch();
-		if (ticksRemaining < 0)
-		{
-			ticksRemaining = 0;
-		}
-		double secondsRemaining = ticksRemaining > 0 ? ticksRemaining * TICKS_TO_SECONDS : 0;
-
-		int eggHistoryCount = plugin.getEggHistoryCount();
-
-		if (eggHistoryCount >= 3)
-		{
-			renderNextEggWithKnownPattern(eggHistoryCount, ticksRemaining, secondsRemaining);
-		}
-		else
-		{
-			renderNextEggUnknownPattern(ticksRemaining, secondsRemaining);
-		}
-	}
-
-	private void renderNextEggWithKnownPattern(int eggHistoryCount,
-			int ticksRemaining, double secondsRemaining)
-	{
-		AraxxorEggType nextEgg = plugin.getNextEggType();
-
-		if (nextEgg == null) {
-			nextEgg = AraxxorEggType.RED;
-		}
-
-		renderNormalEggCountdown(nextEgg, ticksRemaining, secondsRemaining);
-	}
-
-
-	private void renderNormalEggCountdown(AraxxorEggType nextEgg, int ticksRemaining, double secondsRemaining)
-	{
-		StringBuilder eggText = new StringBuilder();
-		
-		boolean wasSkipped = plugin.wasNextEggJustSkipped();
-		AraxxorEggType skippedEggType = plugin.getLastEggDespawnType();
-		
-		AraxxorEggType displayEgg;
-		Color textColor;
-		
-		if (wasSkipped && skippedEggType != null)
-		{
-			displayEgg = skippedEggType;
-			textColor = COLOR_WHITE;
-		}
-		else
-		{
-			displayEgg = nextEgg;
-			textColor = displayEgg.getColor();
-		}
-		
-		eggText.append(displayEgg.getIcon());
-
-		boolean anyMinionsSpawned = plugin.getLastMinionSpawnTime() > 0;
-		if (wasSkipped && skippedEggType != null)
-		{
-			eggText.append(" SKIPPED!");
-		}
-		else if (anyMinionsSpawned || ticksRemaining >= 0)
-		{
-			eggText.append(" ");
-			if (ticksRemaining > 1)
-			{
-				eggText.append(Math.round(secondsRemaining)).append("s");
-			}
-			else if (ticksRemaining >= 0 && ticksRemaining <= 1)
-			{
-				eggText.append("(NOW!)");
-			}
-		}
-
-		panelComponent.getChildren().add(LineComponent.builder()
-			.left(LABEL_NEXT)
-			.right(eggText.toString())
-			.rightColor(textColor)
-			.build());
-	}
-	
-	private void renderNextEggMinimal()
-	{
-		int ticksRemaining = plugin.getTicksUntilNextHatch();
-		if (ticksRemaining < 0)
-		{
-			ticksRemaining = 0;
-		}
-		double secondsRemaining = ticksRemaining > 0 ? ticksRemaining * TICKS_TO_SECONDS : 0;
-
-		int eggHistoryCount = plugin.getEggHistoryCount();
-
-		if (eggHistoryCount >= 3)
-		{
-			renderNextEggWithKnownPatternMinimal(eggHistoryCount, ticksRemaining, secondsRemaining);
-		}
-		else
-		{
-			renderNextEggUnknownPatternMinimal(ticksRemaining, secondsRemaining);
-		}
-	}
-	
-	private void renderNextEggWithKnownPatternMinimal(int eggHistoryCount,
-			int ticksRemaining, double secondsRemaining)
-	{
-		AraxxorEggType nextEgg = plugin.getNextEggType();
-
-		if (nextEgg == null) {
-			nextEgg = AraxxorEggType.RED;
-		}
-
-		renderNormalEggCountdownMinimal(nextEgg, ticksRemaining, secondsRemaining);
-	}
-	
-	private void renderNormalEggCountdownMinimal(AraxxorEggType nextEgg, int ticksRemaining, double secondsRemaining)
-	{
-		StringBuilder eggText = new StringBuilder();
-		
-		boolean wasSkipped = plugin.wasNextEggJustSkipped();
-		AraxxorEggType skippedEggType = plugin.getLastEggDespawnType();
-		
-		AraxxorEggType displayEgg;
-		Color iconColor;
-		
-		if (wasSkipped && skippedEggType != null)
-		{
-			displayEgg = skippedEggType;
-			iconColor = COLOR_WHITE;
-		}
-		else
-		{
-			displayEgg = nextEgg;
-			iconColor = displayEgg.getColor();
-		}
-		
-		// Color the egg icon with rotation color, then reset to white for countdown
-		eggText.append(ColorUtil.colorTag(iconColor));
-		eggText.append(displayEgg.getIcon());
-		eggText.append(ColorUtil.colorTag(COLOR_WHITE));
-
-		boolean anyMinionsSpawned = plugin.getLastMinionSpawnTime() > 0;
-		if (wasSkipped && skippedEggType != null)
-		{
-			eggText.append(" SKIPPED!");
-		}
-		else if (anyMinionsSpawned || ticksRemaining >= 0)
-		{
-			eggText.append(" ");
-			if (ticksRemaining > 1)
-			{
-				eggText.append(Math.round(secondsRemaining)).append("s");
-			}
-			else if (ticksRemaining >= 0 && ticksRemaining <= 1)
-			{
-				eggText.append("(NOW!)");
-			}
-		}
-
-		// In minimal mode, countdown text is white (icon is colored via tags)
-		panelComponent.getChildren().add(LineComponent.builder()
-			.left(LABEL_NEXT)
-			.right(eggText.toString())
-			.rightColor(COLOR_WHITE)
-			.build());
-	}
-	
-	private void renderNextEggUnknownPatternMinimal(int ticksRemaining, double secondsRemaining)
-	{
-		String countdownDisplay = "";
-
-		if (ticksRemaining > 1)
-		{
-			countdownDisplay = new StringBuilder("(")
-				.append(Math.round(secondsRemaining))
-				.append("s)")
-				.toString();
-		}
-		else if (ticksRemaining >= 0 && ticksRemaining <= 1)
-		{
-			countdownDisplay = "(NOW!)";
-		}
-
-		// In minimal mode, countdown is always white
-		panelComponent.getChildren().add(LineComponent.builder()
-			.left("First egg:")
-			.right(countdownDisplay)
-			.rightColor(COLOR_WHITE)
-			.build());
-	}
-
-	private void renderNextEggUnknownPattern(int ticksRemaining, double secondsRemaining)
-	{
-		String countdownDisplay = "";
-		Color countdownColor = Color.YELLOW;
-
-		if (ticksRemaining > 1)
-		{
-			countdownDisplay = new StringBuilder("(")
-				.append(Math.round(secondsRemaining))
-				.append("s)")
-				.toString();
-		}
-		else if (ticksRemaining >= 0 && ticksRemaining <= 1)
-		{
-			countdownDisplay = "(NOW!)";
-		}
-
-		panelComponent.getChildren().add(LineComponent.builder()
-			.left("First egg:")
-			.right(countdownDisplay)
-			.rightColor(countdownColor)
-			.build());
-	}
-
 	private String formatTimeSimple(long milliseconds)
 	{
 		if (milliseconds < 0)

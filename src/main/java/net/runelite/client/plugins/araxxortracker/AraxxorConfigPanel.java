@@ -31,7 +31,6 @@ import javax.swing.SwingUtilities;
 import javax.swing.border.CompoundBorder;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.MatteBorder;
-import lombok.extern.slf4j.Slf4j;
 import net.runelite.client.config.ConfigDescriptor;
 import net.runelite.client.config.ConfigItemDescriptor;
 import net.runelite.client.config.ConfigManager;
@@ -48,7 +47,6 @@ import net.runelite.client.callback.ClientThread;
 import net.runelite.api.Client;
 import javax.swing.ImageIcon;
 
-@Slf4j
 public class AraxxorConfigPanel extends PluginPanel
 {
 	private static final int SPINNER_FIELD_WIDTH = 6;
@@ -61,7 +59,6 @@ public class AraxxorConfigPanel extends PluginPanel
 	private final ItemManager itemManager;
 	private final ClientThread clientThread;
 	
-	// Thread-safe LRU cache for item names
 	private static final int MAX_CACHE_SIZE = 1000;
 	private final Map<Integer, String> itemNameCache = java.util.Collections.synchronizedMap(
 		new java.util.LinkedHashMap<Integer, String>(16, 0.75f, true) {
@@ -72,7 +69,6 @@ public class AraxxorConfigPanel extends PluginPanel
 		}
 	);
 	
-	// Thread-safe LRU cache for item prices with timestamps
 	private static class CachedPrice {
 		final int price;
 		final long timestamp;
@@ -83,7 +79,7 @@ public class AraxxorConfigPanel extends PluginPanel
 		}
 	}
 	
-	private static final long PRICE_CACHE_EXPIRY_MS = 3 * 60 * 60 * 1000L; // 3 hours
+	private static final long PRICE_CACHE_EXPIRY_MS = 24 * 60 * 60 * 1000L;
 	private final Map<Integer, CachedPrice> itemPriceCache = java.util.Collections.synchronizedMap(
 		new java.util.LinkedHashMap<Integer, CachedPrice>(16, 0.75f, true) {
 			@Override
@@ -93,8 +89,6 @@ public class AraxxorConfigPanel extends PluginPanel
 		}
 	);
 	
-	// Cache for recalculated GP values (to avoid recalculating on every render)
-	// Key: session/kill identifier, Value: CachedGP with timestamp
 	private static class CachedGP {
 		final long gp;
 		final long timestamp;
@@ -105,12 +99,12 @@ public class AraxxorConfigPanel extends PluginPanel
 		}
 	}
 	
-	private static final long GP_CACHE_EXPIRY_MS = 30 * 60 * 1000L; // 30 minutes
+	private static final long GP_CACHE_EXPIRY_MS = 24 * 60 * 60 * 1000L;
 	private final Map<String, CachedGP> gpCache = java.util.Collections.synchronizedMap(
 		new java.util.LinkedHashMap<String, CachedGP>(16, 0.75f, true) {
 			@Override
 			protected boolean removeEldestEntry(Map.Entry<String, CachedGP> eldest) {
-				return size() > 100; // Limit cache size
+				return size() > 100;
 			}
 		}
 	);
@@ -123,24 +117,17 @@ public class AraxxorConfigPanel extends PluginPanel
 	{
 		if (loot == null || loot.isEmpty())
 		{
-			log.debug("[GP Calc] Cache key: {} - Empty loot map", cacheKey);
 			return 0;
 		}
 		
 		long currentTime = System.currentTimeMillis();
 		
-		// Check cache
 		CachedGP cachedGP = gpCache.get(cacheKey);
 		if (cachedGP != null && (currentTime - cachedGP.timestamp) < GP_CACHE_EXPIRY_MS)
 		{
-			log.debug("[GP Calc] Cache key: {} - Using cached GP: {}", cacheKey, cachedGP.gp);
 			return cachedGP.gp;
 		}
 		
-		log.debug("[GP Calc] Cache key: {} - Recalculating GP for {} items", cacheKey, loot.size());
-		
-		// Ensure all prices are cached before calculating GP
-		// Collect item IDs that need prices (missing or expired > 3 hours)
 		java.util.Set<Integer> missingPrices = new java.util.HashSet<>();
 		for (Map.Entry<Integer, Long> entry : loot.entrySet())
 		{
@@ -152,7 +139,6 @@ public class AraxxorConfigPanel extends PluginPanel
 			}
 		}
 		
-		// If we have missing prices, try to fetch them
 		if (!missingPrices.isEmpty() && clientThread != null)
 		{
 			boolean isOnClientThread = client != null && client.isClientThread();
@@ -165,14 +151,11 @@ public class AraxxorConfigPanel extends PluginPanel
 					{
 						cacheItemPrice(itemId);
 					}
-					// Invalidate GP cache so it recalculates with new prices on next access
 					gpCache.remove(finalCacheKey);
-					// Don't trigger UI rebuild here to avoid deadlocks - UI will update on next interaction
 				});
 			}
 			else
 			{
-				// On client thread, fetch prices now
 				for (int itemId : missingPrices)
 				{
 					cacheItemPrice(itemId);
@@ -180,76 +163,51 @@ public class AraxxorConfigPanel extends PluginPanel
 			}
 		}
 		
-		// Recalculate GP using current cached prices
 		long totalGP = 0;
 		for (Map.Entry<Integer, Long> entry : loot.entrySet())
 		{
 			int itemId = entry.getKey();
 			long quantity = entry.getValue();
 			
-			// Try to get cached price first (includes custom prices)
 			int price = getCachedItemPrice(itemId);
 			
-			// If not cached or returns 0, try to get price directly if on client thread
 			if (price <= 0)
 			{
-				// Check if we're on client thread - if so, get price directly
 				boolean isOnClientThread = client != null && client.isClientThread();
 				
 				if (isOnClientThread)
 				{
-					// We're on client thread, can get price directly
 					try
 					{
-						// Check for custom price first
 						int customPrice = getCustomItemPrice(itemId);
 						if (customPrice > 0)
 						{
 							price = customPrice;
 							itemPriceCache.put(itemId, new CachedPrice(customPrice, System.currentTimeMillis()));
-							log.debug("[GP Calc] Item ID: {} - Got custom price on client thread: {}", itemId, customPrice);
 						}
 						else
 						{
-							// Fallback to item manager
 							price = itemManager.getItemPrice(itemId);
 							if (price > 0)
 							{
 								itemPriceCache.put(itemId, new CachedPrice(price, System.currentTimeMillis()));
-								log.debug("[GP Calc] Item ID: {} - Got ItemManager price on client thread: {}", itemId, price);
 							}
 						}
 					}
 					catch (Exception e)
 					{
-						log.debug("[GP Calc] Item ID: {} - Exception getting price: {}", itemId, e.getMessage());
 					}
-				}
-				else
-				{
-					// Not on client thread - price will be 0 for now, async fetch will update it
-					log.debug("[GP Calc] Item ID: {} - Not on client thread, price unavailable (will be fetched async)", itemId);
 				}
 			}
 			
 			long itemValue = (long)price * quantity;
 			totalGP += itemValue;
-			log.debug("[GP Calc] Item ID: {}, Quantity: {}, Final price: {}, Value: {}, Running total: {}", 
-				itemId, quantity, price, itemValue, totalGP);
 		}
 		
-		log.debug("[GP Calc] Cache key: {} - Final total GP: {}", cacheKey, totalGP);
-		
-		// Only cache GP if we have valid prices (totalGP > 0 or all prices were available)
-		// Don't cache 0 values as they might be incomplete (prices still loading)
 		boolean allPricesAvailable = missingPrices.isEmpty();
 		if (totalGP > 0 || allPricesAvailable)
 		{
-			// Cache the result
 			gpCache.put(cacheKey, new CachedGP(totalGP, currentTime));
-		}
-		else
-		{
 		}
 		
 		return totalGP;
@@ -270,7 +228,6 @@ public class AraxxorConfigPanel extends PluginPanel
 	
 	private final Client client;
 	
-	// Track pending async operations to prevent queue buildup
 	private final java.util.Set<Integer> pendingNameFetches = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
 	private final java.util.Set<Integer> pendingPriceFetches = java.util.Collections.synchronizedSet(new java.util.HashSet<>());
 	
@@ -285,7 +242,6 @@ public class AraxxorConfigPanel extends PluginPanel
 			return cached;
 		}
 		
-		// Fetch asynchronously if not already pending
 		if (!pendingNameFetches.contains(itemId))
 		{
 			pendingNameFetches.add(itemId);
@@ -306,10 +262,9 @@ public class AraxxorConfigPanel extends PluginPanel
 							}
 						}
 					}
-					catch (Exception e)
-					{
-						// Ignore invalid item IDs
-					}
+			catch (Exception e)
+						{
+						}
 				}
 			});
 		}
@@ -338,93 +293,62 @@ public class AraxxorConfigPanel extends PluginPanel
 			}
 			catch (Exception e)
 			{
-				// Ignore invalid item IDs
 			}
 		}
 	}
 	
-	/**
-	 * Get custom price override for specific items (Noxious parts and Fang)
-	 * Returns -1 if no custom price is set or if not on client thread
-	 * Uses GE prices: Noxious parts = Halberd GE price / 3, Fang = Rancour GE price
-	 * Must be called on client thread for itemManager calls
-	 */
 	private int getCustomItemPrice(int itemId)
 	{
-		// Noxious weapon parts - each part worth halberd GE value / 3
-		// NOXIOUS_POINT = 29790, NOXIOUS_BLADE = 29792, NOXIOUS_POMMEL = 29794
 		if (itemId == 29790 || itemId == 29792 || itemId == 29794)
 		{
 			try
 			{
-				// Get GE price of Noxious Halberd (29796) and divide by 3
 				int halberdPrice = itemManager.getItemPrice(29796);
 				if (halberdPrice > 0)
 				{
 					int partPrice = halberdPrice / 3;
 					return partPrice;
 				}
-				// Fallback to 12m if GE price not available
 				return 12_000_000;
 			}
 			catch (IllegalStateException e)
 			{
-				// Not on client thread - return -1, will be handled by async fetch
-				log.debug("[Custom Price] Noxious part ID: {} - Not on client thread, deferring: {}", itemId, e.getMessage());
 				return -1;
 			}
 		}
 		
-		// Araxyte Fang - worth Rancour GE price (creates Amulet of Rancour)
-		// ARAXYTE_FANG = 29799, AMULET_OF_RANCOUR = 29801
 		if (itemId == 29799)
 		{
 			try
 			{
-				// Get GE price of Amulet of Rancour (29801)
 				int rancourPrice = itemManager.getItemPrice(29801);
 				if (rancourPrice > 0)
 				{
 					return rancourPrice;
 				}
-				// Fallback to 60m if GE price not available
 				return 60_000_000;
 			}
 			catch (IllegalStateException e)
 			{
-				// Not on client thread - return -1, will be handled by async fetch
 				return -1;
 			}
 		}
 		
-		log.debug("[Custom Price] Item ID: {} - No custom price (not Noxious part or Fang)", itemId);
-		return -1; // No custom price
+		return -1;
 	}
 	
-	/**
-	 * Pre-populate item price cache (called from plugin on client thread)
-	 * Prices are cached for 3 hours before refresh
-	 */
 	public void cacheItemPrice(int itemId)
 	{
 		long currentTime = System.currentTimeMillis();
 		
-		// Check if already cached with valid price and not expired
 		CachedPrice cached = itemPriceCache.get(itemId);
-		if (cached != null && cached.price > 0)
+		if (cached != null && cached.price > 0 && (currentTime - cached.timestamp) < PRICE_CACHE_EXPIRY_MS)
 		{
-			if ((currentTime - cached.timestamp) < PRICE_CACHE_EXPIRY_MS)
-			{
-				log.debug("[CacheItemPrice] Item ID: {} - Already cached: {} (age: {} min)", 
-					itemId, cached.price, (currentTime - cached.timestamp) / 60000);
-				return;
-			}
-			// Cache expired, will refresh below
+			return;
 		}
 		
 		try
 		{
-			// Check for custom price first (only works on client thread)
 			boolean isOnClientThread = client != null && client.isClientThread();
 			if (isOnClientThread)
 			{
@@ -436,28 +360,17 @@ public class AraxxorConfigPanel extends PluginPanel
 				}
 			}
 			
-			// Fallback to regular GE price (only on client thread)
 			if (isOnClientThread)
 			{
 				int price = itemManager.getItemPrice(itemId);
 				if (price > 0)
 				{
 					itemPriceCache.put(itemId, new CachedPrice(price, currentTime));
-					log.debug("[CacheItemPrice] Item ID: {} - Cached GE price: {}", itemId, price);
 				}
-				else
-				{
-					log.debug("[CacheItemPrice] Item ID: {} - Price is 0 or unavailable", itemId);
-				}
-			}
-			else
-			{
-				log.debug("[CacheItemPrice] Item ID: {} - Not on client thread, will be cached async", itemId);
 			}
 		}
 		catch (Exception e)
 		{
-			// Ignore invalid item IDs
 		}
 	}
 	
@@ -495,45 +408,31 @@ public class AraxxorConfigPanel extends PluginPanel
 	{
 		long currentTime = System.currentTimeMillis();
 		
-		// Check cache first (fast path - avoids thread check)
 		CachedPrice cached = itemPriceCache.get(itemId);
 		if (cached != null && cached.price > 0)
 		{
-			// Check if cache is still valid (< 3 hours old)
 			if ((currentTime - cached.timestamp) < PRICE_CACHE_EXPIRY_MS)
 			{
-				log.debug("[GetCachedPrice] Item ID: {} - Returning cached price: {} (age: {} min)", 
-					itemId, cached.price, (currentTime - cached.timestamp) / 60000);
 				return cached.price;
 			}
-			// Cache expired, will fetch new price below
-			log.debug("[GetCachedPrice] Item ID: {} - Cached price expired (age: {} min), will refresh", 
-				itemId, (currentTime - cached.timestamp) / 60000);
 		}
 		
-		// If not cached or expired, check for custom price (only if on client thread)
 		boolean isOnClientThread = client != null && client.isClientThread();
 		if (isOnClientThread)
 		{
 			int customPrice = getCustomItemPrice(itemId);
 			if (customPrice > 0)
 			{
-				// Cache the custom price with current timestamp
 				itemPriceCache.put(itemId, new CachedPrice(customPrice, currentTime));
-				log.debug("[GetCachedPrice] Item ID: {} - Cached custom price on client thread: {}", itemId, customPrice);
 				return customPrice;
 			}
 		}
 		
-		// Return cached value if available (even if expired, better than 0)
 		if (cached != null && cached.price > 0)
 		{
 			return cached.price;
 		}
 		
-		log.debug("[GetCachedPrice] Item ID: {} - Not in cache, triggering async fetch", itemId);
-		
-		// Fetch asynchronously if not already pending
 		if (!pendingPriceFetches.contains(itemId))
 		{
 			pendingPriceFetches.add(itemId);
@@ -548,7 +447,6 @@ public class AraxxorConfigPanel extends PluginPanel
 					{
 						try
 						{
-							// Check for custom price first (we're on client thread now)
 							int customPriceAsync = getCustomItemPrice(itemId);
 							int price;
 							if (customPriceAsync > 0)
@@ -558,7 +456,6 @@ public class AraxxorConfigPanel extends PluginPanel
 							else
 							{
 								price = itemManager.getItemPrice(itemId);
-								log.debug("[GetCachedPrice] Item ID: {} - Async fetched GE price: {}", itemId, price);
 							}
 							if (price > 0)
 							{
@@ -570,33 +467,26 @@ public class AraxxorConfigPanel extends PluginPanel
 										itemPriceCache.remove(firstKey);
 									}
 								}
-								// Cache price with current timestamp (valid for 3 hours)
 								itemPriceCache.put(itemId, new CachedPrice(price, System.currentTimeMillis()));
 								
-								// Invalidate GP cache so it recalculates with new price on next access
 								gpCache.clear();
-								// Don't trigger UI rebuild here to avoid deadlocks - UI will update on next interaction
 							}
 						}
 						catch (Exception e)
 						{
-							// Ignore invalid item IDs
 						}
 					}
 				});
 			}
 			catch (Exception e)
 			{
-				log.debug("[GetCachedPrice] Item ID: {} - Exception scheduling async fetch: {}", itemId, e.getMessage());
 				pendingPriceFetches.remove(itemId);
 			}
 		}
 		
-		log.debug("[GetCachedPrice] Item ID: {} - Returning 0 (price not available yet)", itemId);
 		return 0;
 	}
 
-	// Throttle UI rebuilds to prevent excessive refreshes
 	private long lastRebuildTime = 0;
 	private static final long REBUILD_THROTTLE_MS = 100;
 	private javax.swing.Timer rebuildTimer = null;
@@ -626,7 +516,7 @@ public class AraxxorConfigPanel extends PluginPanel
 	private void doRefreshStats()
 	{
 		lastRebuildTime = System.currentTimeMillis();
-		rebuildLootTracker();
+		rebuild(); // Full rebuild to update stats display
 	}
 	
 
@@ -980,7 +870,6 @@ public class AraxxorConfigPanel extends PluginPanel
 
 		timeStr = timeStr.trim();
 		
-		// Remove any text in parentheses (e.g., "(min:sec)")
 		timeStr = timeStr.replaceAll("\\([^)]*\\)", "").trim();
 		
 		if (timeStr.length() > 20)
@@ -992,7 +881,6 @@ public class AraxxorConfigPanel extends PluginPanel
 		{
 			if (timeStr.contains(":"))
 			{
-				// MM:SS format
 				String[] parts = timeStr.split(":", 2);
 				if (parts.length == 2)
 				{
@@ -1012,7 +900,6 @@ public class AraxxorConfigPanel extends PluginPanel
 			}
 			else
 			{
-				// Plain seconds format
 				int seconds = Integer.parseInt(timeStr);
 				if (seconds < 0 || seconds > 5999)
 				{
@@ -1288,7 +1175,6 @@ public class AraxxorConfigPanel extends PluginPanel
 				timeField.setPreferredSize(new Dimension(timeField.getPreferredSize().width, timeField.getPreferredSize().height));
 				timeField.setMaximumSize(new Dimension(timeField.getPreferredSize().width, timeField.getPreferredSize().height));
 				
-				// Track if placeholder is shown
 				final boolean[] isPlaceholder = {timeValue.equals("(mm:ss)")};
 				if (isPlaceholder[0])
 				{
@@ -1389,7 +1275,6 @@ public class AraxxorConfigPanel extends PluginPanel
 					}
 				});
 				
-				// Wrap text field in a panel with proper spacing
 				JPanel fieldWrapper = new JPanel(new BorderLayout());
 				fieldWrapper.setOpaque(false);
 				fieldWrapper.add(Box.createHorizontalStrut(5), BorderLayout.WEST);
@@ -1459,11 +1344,7 @@ public class AraxxorConfigPanel extends PluginPanel
 	
 	private final JPanel lootContainer = new JPanel();
 	private final List<AraxxorLootBox> lootBoxes = new ArrayList<>();
-	private final JPanel overallPanel = new JPanel();
-	private final JLabel overallKillsLabel = new JLabel();
-	private final JLabel overallGpLabel = new JLabel();
 	private final JButton collapseAllBtn = new JButton();
-	private JPanel headerBar;
 	private static final ImageIcon COLLAPSE_ICON;
 	private static final ImageIcon EXPAND_ICON;
 	private static final ImageIcon COLLAPSE_ICON_HOVER;
@@ -1747,45 +1628,10 @@ public class AraxxorConfigPanel extends PluginPanel
 			new MatteBorder(1, 0, 0, 0, ColorScheme.DARK_GRAY_COLOR),
 			new EmptyBorder(10, 0, 0, 0)));
 		
-		headerBar = new JPanel();
-		headerBar.setLayout(new BorderLayout());
-		headerBar.setBackground(ColorScheme.DARKER_GRAY_COLOR);
-		headerBar.setBorder(new CompoundBorder(
-			new MatteBorder(1, 0, 1, 0, ColorScheme.BRAND_ORANGE),
-			new EmptyBorder(10, 12, 10, 12)));
-		headerBar.setPreferredSize(new Dimension(0, 38));
-		
-		JPanel statsPanel = new JPanel();
-		statsPanel.setLayout(new FlowLayout(FlowLayout.CENTER, 0, 0));
-		statsPanel.setOpaque(false);
-		
-		overallKillsLabel.setFont(FontManager.getRunescapeBoldFont());
-		overallKillsLabel.setForeground(ColorScheme.BRAND_ORANGE);
-		overallGpLabel.setFont(FontManager.getRunescapeBoldFont());
-		overallGpLabel.setForeground(ColorScheme.BRAND_ORANGE);
-		
-		JLabel separator = new JLabel(" | ");
-		separator.setFont(FontManager.getRunescapeBoldFont());
-		separator.setForeground(new Color(ColorScheme.BRAND_ORANGE.getRed(), ColorScheme.BRAND_ORANGE.getGreen(), ColorScheme.BRAND_ORANGE.getBlue(), 180));
-		
-		statsPanel.add(overallKillsLabel);
-		statsPanel.add(separator);
-		statsPanel.add(overallGpLabel);
-		
-		headerBar.add(statsPanel, BorderLayout.CENTER);
-		
-		overallPanel.setVisible(false);
-		
 		lootContainer.setLayout(new DynamicGridLayout(0, 1, 0, 0));
 		lootContainer.setOpaque(false);
 		
-		JPanel contentWrapper = new JPanel();
-		contentWrapper.setLayout(new BorderLayout());
-		contentWrapper.setOpaque(false);
-		contentWrapper.add(headerBar, BorderLayout.NORTH);
-		contentWrapper.add(lootContainer, BorderLayout.CENTER);
-		
-		section.add(contentWrapper, BorderLayout.CENTER);
+		section.add(lootContainer, BorderLayout.CENTER);
 		
 		rebuildLootTracker();
 		
@@ -1888,7 +1734,6 @@ public class AraxxorConfigPanel extends PluginPanel
 		
 		if (kills.isEmpty())
 		{
-			overallPanel.setVisible(false);
 			collapseAllBtn.setVisible(false);
 			JLabel emptyLabel = new JLabel("No kills tracked yet");
 			emptyLabel.setFont(FontManager.getRunescapeSmallFont());
@@ -1900,8 +1745,6 @@ public class AraxxorConfigPanel extends PluginPanel
 			return;
 		}
 		
-		// Pre-cache all item prices before building views (ensures GP calculations work)
-		// Collect item IDs first
 		java.util.Set<Integer> uniqueItemIds = new java.util.HashSet<>();
 		for (AraxxorKillRecord kill : kills)
 		{
@@ -1914,56 +1757,41 @@ public class AraxxorConfigPanel extends PluginPanel
 			}
 		}
 		
-		// Try to cache prices synchronously if on client thread, otherwise defer to async
 		boolean cachedSync = false;
 		if (clientThread != null)
 		{
 			try
 			{
-				// Try caching one item to check if we're on client thread
 				if (!uniqueItemIds.isEmpty())
 				{
 					int testItemId = uniqueItemIds.iterator().next();
 					cacheItemPrice(testItemId);
 					cachedSync = true;
 					
-					// Cache all items
 					for (int itemId : uniqueItemIds)
 					{
 						cacheItemPrice(itemId);
 					}
-					log.debug("[RebuildLootTracker] Pre-cached {} unique item IDs synchronously", uniqueItemIds.size());
 				}
 			}
 			catch (IllegalStateException e)
 			{
-				// Not on client thread - will defer to async
 				cachedSync = false;
 			}
 		}
 		
-		// If not cached synchronously, schedule async caching
 		if (!cachedSync && clientThread != null && !uniqueItemIds.isEmpty())
 		{
-			log.debug("[RebuildLootTracker] Not on client thread, deferring price cache for {} items", uniqueItemIds.size());
 			java.util.Set<Integer> finalItemIds = new java.util.HashSet<>(uniqueItemIds);
 			clientThread.invokeLater(() -> {
 				for (int itemId : finalItemIds)
 				{
 					cacheItemPrice(itemId);
 				}
-				log.debug("[RebuildLootTracker] Async cached {} item prices", finalItemIds.size());
 			});
 		}
 		
-		overallPanel.setVisible(true);
 		collapseAllBtn.setVisible(true);
-		updateOverallStats();
-		
-		if (headerBar != null)
-		{
-			headerBar.setVisible(currentViewMode != ViewMode.BY_SESSION);
-		}
 		
 		switch (currentViewMode)
 		{
@@ -2170,12 +1998,8 @@ public class AraxxorConfigPanel extends PluginPanel
 			}
 		}
 		
-		// Use cached GP calculation (recalculates max once per day)
 		String cacheKey = "day_" + dayKey + "_" + totalKills;
-		log.debug("[Day Accordion] Day: {}, Total kills: {}, Aggregated loot items: {}", 
-			dayKey, totalKills, dayAggregatedLoot.size());
 		long totalGP = calculateGPWithCache(dayAggregatedLoot, cacheKey);
-		log.debug("[Day Accordion] Day: {} - Calculated total GP: {}", dayKey, totalGP);
 		
 		// Day header (accordion toggle)
 		JPanel dayHeader = new JPanel();
@@ -2335,15 +2159,6 @@ public class AraxxorConfigPanel extends PluginPanel
 			sessionsContainer.revalidate();
 			repaint();
 		});
-	}
-	
-	private void updateOverallStats()
-	{
-		List<AraxxorKillRecord> kills = plugin.getSessionKills();
-		long totalValue = plugin.getSessionTotalValue();
-		
-		overallKillsLabel.setText("KC: " + kills.size());
-		overallGpLabel.setText("Value: " + QuantityFormatter.quantityToStackSize(totalValue));
 	}
 	
 	private void toggleCollapseAll()

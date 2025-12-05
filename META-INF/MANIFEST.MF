@@ -1,0 +1,4 @@
+Manifest-Version: 1.0
+Main-Class: net.runelite.client.plugins.araxxortracker.AraxxorPluginTest
+Multi-Release: true
+

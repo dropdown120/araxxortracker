@@ -23,7 +23,6 @@ import javax.swing.SwingConstants;
 import javax.swing.border.CompoundBorder;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.MatteBorder;
-import lombok.extern.slf4j.Slf4j;
 import net.runelite.client.game.ItemManager;
 import net.runelite.client.ui.ColorScheme;
 import net.runelite.client.ui.FontManager;
@@ -34,12 +33,10 @@ import net.runelite.client.util.QuantityFormatter;
  * Collapsible box for displaying Araxxor loot, similar to LootTrackerBox
  * Can represent a Session, Trip, or Kill
  */
-@Slf4j
 class AraxxorLootBox extends JPanel
 {
-	private static final int ITEMS_PER_ROW = 4; // Reduced from 5 to 4 for better spacing
+	private static final int ITEMS_PER_ROW = 4;
 	
-	// Cache for HTML-escaped strings to avoid repeated processing
 	private static final int HTML_ESCAPE_CACHE_SIZE = 100;
 	private static final Map<String, String> htmlEscapeCache = new java.util.LinkedHashMap<String, String>(16, 0.75f, true) {
 		@Override
@@ -48,22 +45,9 @@ class AraxxorLootBox extends JPanel
 		}
 	};
 	
-	// OSRS Araxxor unique drop item IDs
 	private static final java.util.Set<Integer> UNIQUE_DROP_IDS = java.util.Collections.unmodifiableSet(
 		java.util.stream.Stream.of(
-			// Noxious weapon parts
-			29790, // NOXIOUS_POINT
-			29792, // NOXIOUS_BLADE
-			29794, // NOXIOUS_POMMEL
-			// Araxyte Fang
-			29799, // ARAXYTE_FANG
-			// Other unique drops
-			29788, // ARAXYTE_HEAD
-			29786, // JAR_OF_VENOM
-			29781, // COAGULATED_VENOM
-			// Pets
-			29836, // NID
-			29838  // RAX
+			29790, 29792, 29794, 29799, 29788, 29786, 29781, 29836, 29838
 		).collect(java.util.stream.Collectors.toSet())
 	);
 	
@@ -94,7 +78,7 @@ class AraxxorLootBox extends JPanel
 	{
 		JLabel starLabel = new JLabel("★");
 		starLabel.setFont(FontManager.getRunescapeSmallFont());
-		starLabel.setForeground(new Color(255, 215, 0, 200)); // Subtle golden color
+		starLabel.setForeground(new Color(255, 215, 0, 200));
 		starLabel.setToolTipText("Contains unique drop");
 		return starLabel;
 	}
@@ -123,22 +107,21 @@ class AraxxorLootBox extends JPanel
 		// Title bar - modern, clean styling with subtle borders
 		titleBar.setLayout(new BoxLayout(titleBar, BoxLayout.X_AXIS));
 		titleBar.setBorder(new CompoundBorder(
-			new MatteBorder(0, 0, 1, 0, ColorScheme.DARK_GRAY_COLOR), // Cleaner border color
-			new EmptyBorder(10, 12, 10, 12) // Consistent padding
+			new MatteBorder(0, 0, 1, 0, ColorScheme.DARK_GRAY_COLOR),
+			new EmptyBorder(10, 12, 10, 12)
 		));
-		titleBar.setBackground(ColorScheme.DARKER_GRAY_COLOR); // Use standard color scheme
+		titleBar.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 		titleBar.setOpaque(true);
-		titleBar.setPreferredSize(new Dimension(0, 38)); // Slightly reduced height for cleaner look
+		titleBar.setPreferredSize(new Dimension(0, 38));
 		
-		// Modern hover effect - subtle and clean
 		titleBar.addMouseListener(new java.awt.event.MouseAdapter()
 		{
 			@Override
 			public void mouseEntered(java.awt.event.MouseEvent e)
 			{
-				titleBar.setBackground(ColorScheme.DARKER_GRAY_HOVER_COLOR); // Use standard hover color
+				titleBar.setBackground(ColorScheme.DARKER_GRAY_HOVER_COLOR);
 				titleBar.setBorder(new CompoundBorder(
-					new MatteBorder(0, 0, 1, 0, ColorScheme.MEDIUM_GRAY_COLOR), // Subtle border highlight
+					new MatteBorder(0, 0, 1, 0, ColorScheme.MEDIUM_GRAY_COLOR),
 					new EmptyBorder(10, 12, 10, 12)
 				));
 			}
@@ -156,7 +139,7 @@ class AraxxorLootBox extends JPanel
 			@Override
 			public void mousePressed(java.awt.event.MouseEvent e)
 			{
-				titleBar.setBackground(ColorScheme.DARKER_GRAY_COLOR); // Subtle pressed state
+				titleBar.setBackground(ColorScheme.DARKER_GRAY_COLOR);
 			}
 			
 			@Override
@@ -173,17 +156,15 @@ class AraxxorLootBox extends JPanel
 			}
 		});
 		
-		// Add hover effect to the entire box for better UX (only when not hovering titleBar)
 		addMouseListener(new java.awt.event.MouseAdapter()
 		{
 			@Override
 			public void mouseEntered(java.awt.event.MouseEvent e)
 			{
-				// Only highlight box border if not hovering over titleBar
 				if (!titleBar.contains(e.getPoint()))
 				{
 					setBorder(new CompoundBorder(
-						new MatteBorder(1, 1, 1, 1, ColorScheme.MEDIUM_GRAY_COLOR), // Use standard color scheme
+						new MatteBorder(1, 1, 1, 1, ColorScheme.MEDIUM_GRAY_COLOR),
 						new EmptyBorder(0, 0, 0, 0)
 					));
 				}
@@ -192,7 +173,6 @@ class AraxxorLootBox extends JPanel
 			@Override
 			public void mouseExited(java.awt.event.MouseEvent e)
 			{
-				// Restore original border
 				setBorder(new CompoundBorder(
 					new MatteBorder(1, 1, 1, 1, ColorScheme.DARK_GRAY_COLOR),
 					new EmptyBorder(0, 0, 0, 0)
@@ -202,7 +182,6 @@ class AraxxorLootBox extends JPanel
 		
 		titleLabel.setFont(FontManager.getRunescapeSmallFont());
 		titleLabel.setForeground(Color.WHITE);
-		// HTML wrapping will handle long text - no truncation needed
 		titleBar.add(titleLabel);
 		
 		titleBar.add(Box.createRigidArea(new Dimension(5, 0)));
@@ -285,7 +264,6 @@ class AraxxorLootBox extends JPanel
 	{
 		if (text == null) return "";
 		
-		// Check cache first
 		synchronized (htmlEscapeCache) {
 			String cached = htmlEscapeCache.get(text);
 			if (cached != null) {
@@ -300,7 +278,6 @@ class AraxxorLootBox extends JPanel
 			.replace("\"", "&quot;")
 			.replace("'", "&#39;");
 		
-		// Cache the result
 		synchronized (htmlEscapeCache) {
 			htmlEscapeCache.put(text, escaped);
 		}
@@ -389,17 +366,11 @@ class AraxxorLootBox extends JPanel
 		// Replace title label - add elements directly to titleBar for proper layout
 		titleBar.removeAll();
 		
-		// Check if session contains unique drops and recalculate GP with current custom prices
 		Map<Integer, Long> aggregatedLoot = aggregateLoot(sessionKills);
 		boolean hasUnique = hasUniqueDrops(aggregatedLoot);
 		
-		log.debug("[BuildSession] Session start: {}, Kill count: {}, Aggregated loot items: {}, Has unique: {}", 
-			summary.getSessionStartTime(), killCount, aggregatedLoot.size(), hasUnique);
-		
-		// Use cached GP calculation (recalculates max once per day)
 		String cacheKey = "session_" + summary.getSessionStartTime();
 		long totalGP = configPanel.calculateGPWithCache(aggregatedLoot, cacheKey);
-		log.debug("[BuildSession] Session start: {} - Calculated total GP: {}", summary.getSessionStartTime(), totalGP);
 		
 		// Add subtle star icon if session contains unique drops
 		if (hasUnique)
@@ -461,17 +432,11 @@ class AraxxorLootBox extends JPanel
 		// Replace title label - add elements directly to titleBar for proper layout
 		titleBar.removeAll();
 		
-		// Check if session contains unique drops and recalculate GP with current custom prices
 		Map<Integer, Long> aggregatedLoot = aggregateLoot(sessionKills);
 		boolean hasUnique = hasUniqueDrops(aggregatedLoot);
 		
-		log.debug("[BuildSessionNested] Session start: {}, Kill count: {}, Aggregated loot items: {}, Has unique: {}", 
-			summary.getSessionStartTime(), killCount, aggregatedLoot.size(), hasUnique);
-		
-		// Use cached GP calculation (recalculates max once per day)
 		String cacheKey = "session_nested_" + summary.getSessionStartTime();
 		long totalGP = configPanel.calculateGPWithCache(aggregatedLoot, cacheKey);
-		log.debug("[BuildSessionNested] Session start: {} - Calculated total GP: {}", summary.getSessionStartTime(), totalGP);
 		
 		// Add subtle star icon if session contains unique drops
 		if (hasUnique)
@@ -715,7 +680,6 @@ class AraxxorLootBox extends JPanel
 	 */
 	void buildAllView(Map<Integer, Long> aggregatedLoot, int totalKills, long bestTime, AraxxorEggType bestRotation, AraxxorConfigPanel configPanel)
 	{
-		// Use cached GP calculation (recalculates max once per day)
 		String cacheKey = "all_" + totalKills; // Use kill count as part of key
 		long totalGP = configPanel.calculateGPWithCache(aggregatedLoot, cacheKey);
 		
@@ -763,7 +727,6 @@ class AraxxorLootBox extends JPanel
 		// Replace title label - add elements directly to titleBar for proper layout
 		titleBar.removeAll();
 		
-		// Check if kill contains unique drops
 		boolean hasUnique = kill.getLoot() != null && hasUniqueDrops(kill.getLoot());
 		
 		// Add subtle star icon if kill contains unique drops

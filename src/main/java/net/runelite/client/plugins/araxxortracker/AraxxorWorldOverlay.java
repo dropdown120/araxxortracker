@@ -9,7 +9,6 @@ import java.awt.RenderingHints;
 import java.util.ArrayList;
 import java.util.List;
 import javax.inject.Inject;
-import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Client;
 import net.runelite.api.Perspective;
 import net.runelite.api.Point;
@@ -20,7 +19,6 @@ import net.runelite.client.ui.overlay.Overlay;
 import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPosition;
 
-@Slf4j
 class AraxxorWorldOverlay extends Overlay
 {
 	private static final int DISPLAY_DURATION_MS = 7000;
@@ -320,7 +318,6 @@ class AraxxorWorldOverlay extends Overlay
 			return;
 		}
 		
-		// Calculate total width and height
 		int totalWidth = 0;
 		int maxHeight = 0;
 		for (StatCard card : cards)
@@ -434,7 +431,6 @@ class AraxxorWorldOverlay extends Overlay
 	
 	private Color applyOpacity(Color color, float opacity)
 	{
-		// Optimize: if opacity is 1.0f, return original color to avoid creating new object
 		if (opacity >= 1.0f)
 		{
 			return color;

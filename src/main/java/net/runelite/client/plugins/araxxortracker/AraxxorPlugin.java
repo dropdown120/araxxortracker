@@ -8,7 +8,6 @@ import java.util.regex.Pattern;
 import javax.inject.Inject;
 import lombok.Getter;
 import lombok.Value;
-import lombok.extern.slf4j.Slf4j;
 import net.runelite.api.Actor;
 import net.runelite.api.Client;
 import net.runelite.api.GameState;
@@ -47,25 +46,20 @@ import net.runelite.client.util.ImageUtil;
 import net.runelite.client.callback.ClientThread;
 
 @PluginDescriptor(
-	name = "Araxxor Helper",
+	name = "Araxxor Tracker",
 	description = "Comprehensive Araxxor boss fight tracker with mechanics, timing, and phase detection",
 	tags = {"boss", "combat", "timer", "araxxor", "pvm"},
 	enabledByDefault = true
 )
-@Slf4j
 public class AraxxorPlugin extends Plugin
 {
 	private static final int ARAXXOR_NPC_ID = NpcID.ARAXXOR;
 	private static final int ARAXXOR_DEAD_ID = NpcID.ARAXXOR_DEAD;
 	
-	private static final int TICKS_PER_EGG_HATCH = 42;
-	private static final int FIRST_EGG_HATCH_TICK = 21;
 	private static final int EARLY_DESPAWN_THRESHOLD = 10;
 	private static final int MAX_NPC_ITERATION_CHECK = 50;
 	private static final int MAX_AREA_DISTANCE = 50;
 	private static final double ENRAGE_HP_THRESHOLD = 0.25;
-	private static final int SKIP_DISPLAY_TICKS = 4;
-	private static final int NATURAL_HATCH_TICK_THRESHOLD = 1;
 	private static final long GAME_TIMER_OFFSET_MS = 1800;
 	
 	private static final int ANIM_SPECIAL_1 = 11476;
@@ -135,9 +129,6 @@ public class AraxxorPlugin extends Plugin
 
 	@Getter
 	private AraxxorPhase currentPhase = AraxxorPhase.NORMAL;
-
-	@Getter
-	private AraxxorEggType nextEggType = AraxxorEggType.RED;
 	
 	@Getter
 	private WorldPoint firstEggPosition = null;
@@ -178,8 +169,6 @@ public class AraxxorPlugin extends Plugin
 	
 	private final EggTiming[] eggTimings = new EggTiming[9];
 	private int eggTimingsCount = 0;
-	
-	private int cachedLastEventTick = -1;
 
 	@Getter
 	private Map<AraxxorEggType, Integer> activeMinions = new java.util.concurrent.ConcurrentHashMap<>();
@@ -240,9 +229,6 @@ public class AraxxorPlugin extends Plugin
 
 	@Getter
 	private int currentGameTick = 0;
-	
-	private int lastEggDespawnTick = -1;
-	private AraxxorEggType lastEggDespawnType = null;
 	
 	private static final int MAX_SESSION_KILLS = 1024;
 	private static final Duration MAX_AGE = Duration.ofDays(365L);
@@ -356,33 +342,54 @@ public class AraxxorPlugin extends Plugin
 	@Override
 	protected void startUp() throws Exception
 	{
+		// Add overlays immediately
 		if (overlayManager != null)
 		{
 			overlayManager.add(overlay);
 			overlayManager.add(worldOverlay);
 			overlayManager.add(statsOverlay);
 		}
+		
 		resetFight();
-		loadStats();
 		
+		// Create config panel with minimal initialization
 		configPanel = new AraxxorConfigPanel(configManager, config, this, itemManager, clientThread, client);
-		loadKillsFromConfig();
-		
-		if (configPanel != null)
-		{
-			configPanel.refreshStats();
-		}
 
+		// Create nav button immediately with placeholder
 		BufferedImage placeholderIcon = createPlaceholderIcon();
 		navButton = NavigationButton.builder()
-			.tooltip("Araxxor Helper")
+			.tooltip("Araxxor Tracker")
 			.icon(placeholderIcon)
 			.priority(8)
 			.panel(configPanel)
 			.build();
 
-		loadIconAsync();
 		clientToolbar.addNavigation(navButton);
+		loadIconAsync();
+		
+		// Load heavy data in background thread to avoid blocking client
+		new Thread(() -> {
+			try
+			{
+				loadStats();
+				System.out.println("[Araxxor] Stats loaded - killCount=" + killCount + ", bestKillTime=" + bestKillTime);
+				loadKillsFromConfig();
+				System.out.println("[Araxxor] Kills loaded - sessionKills.size()=" + sessionKills.size());
+				// Update UI on Swing EDT after data is loaded
+				if (configPanel != null)
+				{
+					javax.swing.SwingUtilities.invokeLater(() -> {
+						configPanel.refreshStats();
+						System.out.println("[Araxxor] UI refreshed");
+					});
+				}
+			}
+			catch (Exception e)
+			{
+				System.err.println("[Araxxor] Error loading data: " + e.getMessage());
+				e.printStackTrace();
+			}
+		}, "AraxxorDataLoader").start();
 	}
 
 	@Override
@@ -663,9 +670,6 @@ public class AraxxorPlugin extends Plugin
 		currentFightDamageTaken = 0;
 		currentGameTick = 0;
 		lastMinionSpawnTime = -1;
-		lastEggDespawnTick = -1;
-		lastEggDespawnType = null;
-		cachedLastEventTick = -1;
 		cachedInAraxxorArea = false;
 		lastAreaCheckTime = -1;
 		
@@ -680,7 +684,6 @@ public class AraxxorPlugin extends Plugin
 		cachedEggHistoryList = null;
 		cachedEggHistoryListVersion = -1;
 		
-		nextEggType = AraxxorEggType.RED;
 		firstEggType = null;
 		
 		activeMinions.clear();
@@ -746,9 +749,6 @@ public class AraxxorPlugin extends Plugin
 		currentFightDamageDealt = 0;
 		currentFightDamageTaken = 0;
 		lastMinionSpawnTime = -1;
-		lastEggDespawnTick = -1;
-		lastEggDespawnType = null;
-		cachedLastEventTick = -1;
 		cachedTimeInEnrage = -1;
 		cachedTimeInEnrageCalculationTime = -1;
 		cachedInAraxxorArea = false;
@@ -758,7 +758,6 @@ public class AraxxorPlugin extends Plugin
 		eggHistoryIndex.clear();
 		cachedEggHistoryList = null;
 		cachedEggHistoryListVersion = -1;
-		nextEggType = AraxxorEggType.RED;
 		firstEggPosition = null;
 
 		for (int i = 0; i < eggTimingsCount; i++)
@@ -811,54 +810,6 @@ public class AraxxorPlugin extends Plugin
 		return currentFightDamageDealt / elapsedSeconds;
 	}
 	
-	private int cachedLastEventTickCalculationTick = -1;
-	
-	public int getTicksUntilNextHatch()
-	{
-		if (!isFightActive || currentGameTick <= 0)
-		{
-			return -1;
-		}
-
-		int lastEventTick = cachedLastEventTick;
-		
-		if (lastEventTick < 0 || cachedLastEventTickCalculationTick != currentGameTick)
-		{
-			int eventCount = 0;
-			for (int i = 0; i < eggTimingsCount; i++)
-			{
-				EggTiming timing = eggTimings[i];
-				if (timing != null && timing.hadEvent() && timing.type != null)
-				{
-					eventCount++;
-					int eventTick = timing.getLastEventTick();
-					if (eventTick > lastEventTick)
-					{
-						lastEventTick = eventTick;
-					}
-				}
-			}
-			
-			cachedLastEventTick = lastEventTick;
-			cachedLastEventTickCalculationTick = currentGameTick;
-			
-			if (eventCount == 0)
-			{
-				return Math.max(0, FIRST_EGG_HATCH_TICK - currentGameTick);
-			}
-		}
-
-		if (lastEventTick < 0)
-		{
-			return -1;
-		}
-		
-		int ticksSinceLastEvent = currentGameTick - lastEventTick;
-		int ticksIntoCycle = ticksSinceLastEvent % TICKS_PER_EGG_HATCH;
-		
-		return ticksIntoCycle == 0 ? 0 : (TICKS_PER_EGG_HATCH - ticksIntoCycle);
-	}
-
 	private int lastAraxxorAnimation = -1;
 	private int lastAraxxorAnimationTick = -1;
 	
@@ -957,14 +908,13 @@ public class AraxxorPlugin extends Plugin
 		{
 			if (firstEgg != null)
 			{
-				nextEggType = firstEgg.type;
 				firstEggType = firstEgg.type;
 				currentRotationStart = firstEgg.type;
 				firstEggPosition = firstEgg.position;
 
-				eggHistory[0] = nextEggType;
-				eggHistory[1] = nextEggType.getNext();
-				eggHistory[2] = nextEggType.getNext().getNext();
+				eggHistory[0] = firstEgg.type;
+				eggHistory[1] = firstEgg.type.getNext();
+				eggHistory[2] = firstEgg.type.getNext().getNext();
 				eggHistoryCount = 3;
 				eggHistoryIndex.clear();
 				eggHistoryIndex.put(eggHistory[0], 0);
@@ -1005,28 +955,6 @@ public class AraxxorPlugin extends Plugin
 		if (despawnedEgg != null && despawnedEgg.position != null)
 		{
 			despawnedEgg.despawnTick = currentGameTick;
-			lastEggDespawnTick = currentGameTick;
-			lastEggDespawnType = eggType;
-			
-			int eventTick = despawnedEgg.getLastEventTick();
-			if (eventTick > cachedLastEventTick)
-			{
-				cachedLastEventTick = eventTick;
-			}
-			
-			if (!araxxorReachedZeroHp && eggHistoryCount >= 3 && eggType == nextEggType)
-			{
-				Integer currentIndex = eggHistoryIndex.get(eggType);
-				
-				if (currentIndex != null)
-				{
-					nextEggType = eggHistory[(currentIndex + 1) % eggHistoryCount];
-				}
-				else
-				{
-					nextEggType = eggType.getNext();
-				}
-			}
 		}
 		else
 		{
@@ -1045,8 +973,6 @@ public class AraxxorPlugin extends Plugin
 		if (isDespawn)
 		{
 			virtual.despawnTick = currentGameTick;
-			lastEggDespawnTick = currentGameTick;
-			lastEggDespawnType = eggType;
 		}
 		else
 		{
@@ -1055,26 +981,6 @@ public class AraxxorPlugin extends Plugin
 		
 		eggTimings[eggTimingsCount] = virtual;
 		eggTimingsCount++;
-		
-		int eventTick = virtual.getLastEventTick();
-		if (eventTick > cachedLastEventTick)
-		{
-			cachedLastEventTick = eventTick;
-		}
-		
-		if (isDespawn && !araxxorReachedZeroHp && eggHistoryCount >= 3 && eggType == nextEggType)
-		{
-			Integer currentIndex = eggHistoryIndex.get(eggType);
-			
-			if (currentIndex != null)
-			{
-				nextEggType = eggHistory[(currentIndex + 1) % eggHistoryCount];
-			}
-			else
-			{
-				nextEggType = eggType.getNext();
-			}
-		}
 	}
 
 	private void handleMinionSpawned(int minionId)
@@ -1083,26 +989,7 @@ public class AraxxorPlugin extends Plugin
 		
 		if (minionType != null)
 		{
-			if (lastEggDespawnTick >= 0 && lastEggDespawnType != null && lastEggDespawnType == minionType)
-			{
-				int ticksSinceDespawn = currentGameTick - lastEggDespawnTick;
-				if (ticksSinceDespawn <= NATURAL_HATCH_TICK_THRESHOLD)
-				{
-					lastEggDespawnTick = -1;
-					lastEggDespawnType = null;
-				}
-			}
-			else if (lastEggDespawnTick >= 0 && lastEggDespawnType != null)
-			{
-				int ticksSinceDespawn = currentGameTick - lastEggDespawnTick;
-				if (ticksSinceDespawn > SKIP_DISPLAY_TICKS)
-				{
-					lastEggDespawnTick = -1;
-					lastEggDespawnType = null;
-				}
-			}
-			
-			activeMinions.put(minionType, activeMinions.getOrDefault(minionType, 0) + 1);
+			activeMinions.merge(minionType, 1, Integer::sum);
 			lastMinionSpawnTime = System.currentTimeMillis();
 			
 			EggTiming matchingEgg = null;
@@ -1130,12 +1017,6 @@ public class AraxxorPlugin extends Plugin
 			if (matchingEgg != null && matchingEgg.position != null) {
 				matchingEgg.hatchTick = currentGameTick;
 				hatchedCount++;
-				
-				int eventTick = matchingEgg.getLastEventTick();
-				if (eventTick > cachedLastEventTick)
-				{
-					cachedLastEventTick = eventTick;
-				}
 			}
 			else
 			{
@@ -1158,71 +1039,8 @@ public class AraxxorPlugin extends Plugin
 				eggHistoryIndex.put(minionType, 0);
 				cachedEggHistoryList = null;
 				cachedEggHistoryListVersion = eggHistoryCount;
-				nextEggType = minionType.getNext();
 				firstEggType = minionType;
 				currentRotationStart = minionType;
-			}
-			else if (historySize == 3 && wasFirstMinion)
-			{
-				Integer currentIndex = eggHistoryIndex.get(minionType);
-
-				if (currentIndex != null)
-				{
-					nextEggType = eggHistory[(currentIndex + 1) % eggHistoryCount];
-				}
-				else
-				{
-					nextEggType = minionType.getNext();
-				}
-			}
-			else if (historySize < 3)
-			{
-				if (eggHistoryCount < 3)
-				{
-					eggHistory[eggHistoryCount] = minionType;
-				eggHistoryIndex.put(minionType, eggHistoryCount);
-					eggHistoryCount++;
-					cachedEggHistoryList = null;
-					cachedEggHistoryListVersion = eggHistoryCount;
-				}
-
-				if (historySize == 1)
-				{
-					for (AraxxorEggType eggType : AraxxorEggType.values())
-					{
-						boolean found = false;
-						for (int i = 0; i < eggHistoryCount; i++)
-						{
-							if (eggHistory[i] == eggType)
-							{
-								found = true;
-								break;
-							}
-						}
-						if (!found)
-						{
-							nextEggType = eggType;
-							break;
-						}
-					}
-				}
-				else if (historySize == 2)
-				{
-					nextEggType = eggHistory[0];
-				}
-			}
-			else
-			{
-				Integer currentIndex = eggHistoryIndex.get(minionType);
-
-				if (currentIndex != null)
-				{
-					nextEggType = eggHistory[(currentIndex + 1) % eggHistoryCount];
-				}
-				else
-				{
-					nextEggType = minionType.getNext();
-				}
 			}
 		}
 		}
@@ -1234,44 +1052,10 @@ public class AraxxorPlugin extends Plugin
 		
 		if (minionType != null)
 		{
-			int count = activeMinions.getOrDefault(minionType, 0);
-			if (count > 0)
-			{
-			activeMinions.put(minionType, count - 1);
-			}
+			activeMinions.computeIfPresent(minionType, (k, v) -> v > 1 ? v - 1 : null);
 		}
 	}
 
-	// ==================== Utility Methods ====================
-
-	public AraxxorEggType getLastEggDespawnType()
-	{
-		return lastEggDespawnType;
-	}
-	
-	/**
-	 * Check if the current nextEgg was just skipped (despawned) recently
-	 * Returns true if the last despawn happened within SKIP_DISPLAY_TICKS ticks
-	 * This shows "SKIPPED!" briefly before returning to normal countdown
-	 */
-	public boolean wasNextEggJustSkipped()
-	{
-		if (lastEggDespawnTick == -1 || lastEggDespawnType == null)
-		{
-			return false;
-		}
-		
-		// Check if the last skipped egg happened very recently (within SKIP_DISPLAY_TICKS)
-		// The rotation advances immediately, so we check if skip happened very recently
-		int ticksSinceSkip = currentGameTick - lastEggDespawnTick;
-		return ticksSinceSkip >= 0 && ticksSinceSkip <= SKIP_DISPLAY_TICKS;
-	}
-	
-	/**
-	 * Check if the player is in the Araxxor boss area (outside the cave)
-	 * Returns true if Araxxor NPC exists nearby (within reasonable distance)
-	 * Optimized with caching to avoid unnecessary NPC iteration every frame
-	 */
 	public boolean isInAraxxorArea()
 	{
 		Player localPlayer = client != null ? client.getLocalPlayer() : null;
@@ -1281,12 +1065,9 @@ public class AraxxorPlugin extends Plugin
 			return false;
 		}
 		
-		// Performance: Use cached result for a few seconds to avoid expensive NPC iteration every frame
-		// Only recheck periodically or when NPC reference is cleared
 		long currentTime = System.currentTimeMillis();
 		WorldPoint playerLocation = localPlayer.getWorldLocation();
 		
-		// Check cached NPC if available and cache is still valid
 		if (araxxorNpc != null && lastAreaCheckTime >= 0 && 
 			(currentTime - lastAreaCheckTime) < AREA_CHECK_CACHE_MS)
 		{
@@ -1299,11 +1080,9 @@ public class AraxxorPlugin extends Plugin
 					return cachedInAraxxorArea;
 				}
 			}
-			// NPC moved too far or despawned - clear cache and recheck
 			araxxorNpc = null;
 		}
 		
-		// Check if cached NPC reference is still valid (cache expired or NPC cleared)
 		if (araxxorNpc != null)
 		{
 			WorldPoint npcLocation = araxxorNpc.getWorldLocation();
@@ -1317,20 +1096,15 @@ public class AraxxorPlugin extends Plugin
 					return true;
 				}
 			}
-			// NPC is invalid or too far away, clear cache
 			araxxorNpc = null;
 			cachedInAraxxorArea = false;
 		}
 		
-		// Only check WorldView if we don't have a cached reference or cache expired
-		// This avoids iterating through all NPCs on every render call
 		if (client != null)
 		{
 			var worldView = client.getTopLevelWorldView();
 			if (worldView != null)
 			{
-				// Early exit optimization: check a limited number of NPCs
-				// Araxxor should be found quickly if present
 				int checked = 0;
 				for (NPC npc : worldView.npcs())
 				{
@@ -1343,11 +1117,10 @@ public class AraxxorPlugin extends Plugin
 						WorldPoint npcLocation = npc.getWorldLocation();
 						if (npcLocation != null)
 						{
-							// Check if NPC is actually nearby (within reasonable distance)
 							int distance = playerLocation.distanceTo2D(npcLocation);
 							if (distance <= MAX_AREA_DISTANCE)
 							{
-								araxxorNpc = npc; // Cache for future calls
+								araxxorNpc = npc;
 								cachedInAraxxorArea = true;
 								lastAreaCheckTime = currentTime;
 								return true;
@@ -1371,21 +1144,17 @@ public class AraxxorPlugin extends Plugin
 	{
 		boolean isInArea = isInAraxxorArea();
 		
-		// If not in area and fight is active or was started, reset the fight state
 		if (!isInArea && (isFightActive || fightStartTime != -1))
 		{
-			// Player teleported out - reset fight state
 			resetFight();
 			return;
 		}
 		
-		// Reset trip if player left Araxxor area
 		if (!isInArea && !tripKills.isEmpty())
 		{
 			resetTrip();
 		}
 		
-		// Only reset phase if ENRAGED and not in area
 		if (!isInArea && currentPhase == AraxxorPhase.ENRAGED)
 		{
 			currentPhase = AraxxorPhase.NORMAL;
@@ -1393,47 +1162,33 @@ public class AraxxorPlugin extends Plugin
 		}
 	}
 	
-	// ==================== Statistics Management ====================
-	
 	/**
 	 * Update rotation-specific statistics for a given rotation type
 	 */
 	private void updateRotationStats(AraxxorEggType rotation, long killTime, int hits, int damageTaken)
 	{
 		long bestTime = getRotationBestTime(rotation);
-		int bestHits = getRotationBestHits(rotation);
-		int bestDamage = getRotationBestDamage(rotation);
 		
-		// Update best time (lower is better)
+		// Update best time (lower is better) - also update hits/damage from this PB kill
 		if (bestTime == -1 || killTime < bestTime)
 		{
 			switch (rotation)
 			{
-				case WHITE: bestWhiteStartTime = killTime; break;
-				case RED: bestRedStartTime = killTime; break;
-				case GREEN: bestGreenStartTime = killTime; break;
-			}
-		}
-		
-		// Update best hits (higher is better)
-		if (bestHits == -1 || hits > bestHits)
-		{
-			switch (rotation)
-			{
-				case WHITE: bestWhiteStartHits = hits; break;
-				case RED: bestRedStartHits = hits; break;
-				case GREEN: bestGreenStartHits = hits; break;
-			}
-		}
-		
-		// Update best damage taken (lower is better)
-		if (bestDamage == -1 || damageTaken < bestDamage)
-		{
-			switch (rotation)
-			{
-				case WHITE: bestWhiteStartDamage = damageTaken; break;
-				case RED: bestRedStartDamage = damageTaken; break;
-				case GREEN: bestGreenStartDamage = damageTaken; break;
+				case WHITE: 
+					bestWhiteStartTime = killTime;
+					bestWhiteStartHits = hits;
+					bestWhiteStartDamage = damageTaken;
+					break;
+				case RED: 
+					bestRedStartTime = killTime;
+					bestRedStartHits = hits;
+					bestRedStartDamage = damageTaken;
+					break;
+				case GREEN: 
+					bestGreenStartTime = killTime;
+					bestGreenStartHits = hits;
+					bestGreenStartDamage = damageTaken;
+					break;
 			}
 		}
 	}
@@ -1457,7 +1212,6 @@ public class AraxxorPlugin extends Plugin
 		Long bestTimeInEnrageObj = configManager.getConfiguration("arraxxor", "bestTimeInEnrage", Long.class);
 		bestTimeInEnrage = (bestTimeInEnrageObj != null) ? bestTimeInEnrageObj : -1L;
 
-		// Load rotation-specific best times
 		Long bestWhiteStartTimeObj = configManager.getConfiguration("arraxxor", "bestWhiteStartTime", Long.class);
 		bestWhiteStartTime = (bestWhiteStartTimeObj != null) ? bestWhiteStartTimeObj : -1L;
 
@@ -1473,7 +1227,6 @@ public class AraxxorPlugin extends Plugin
 		Integer bestDamageTakenObj = configManager.getConfiguration("arraxxor", "bestDamageTaken", Integer.class);
 		bestDamageTaken = (bestDamageTakenObj != null) ? bestDamageTakenObj : -1;
 		
-		// Load rotation-specific best hits
 		Integer bestWhiteStartHitsObj = configManager.getConfiguration("arraxxor", "bestWhiteStartHits", Integer.class);
 		bestWhiteStartHits = (bestWhiteStartHitsObj != null) ? bestWhiteStartHitsObj : -1;
 		
@@ -1483,7 +1236,6 @@ public class AraxxorPlugin extends Plugin
 		Integer bestGreenStartHitsObj = configManager.getConfiguration("arraxxor", "bestGreenStartHits", Integer.class);
 		bestGreenStartHits = (bestGreenStartHitsObj != null) ? bestGreenStartHitsObj : -1;
 		
-		// Load rotation-specific best damage taken
 		Integer bestWhiteStartDamageObj = configManager.getConfiguration("arraxxor", "bestWhiteStartDamage", Integer.class);
 		bestWhiteStartDamage = (bestWhiteStartDamageObj != null) ? bestWhiteStartDamageObj : -1;
 		
@@ -1493,7 +1245,6 @@ public class AraxxorPlugin extends Plugin
 		Integer bestGreenStartDamageObj = configManager.getConfiguration("arraxxor", "bestGreenStartDamage", Integer.class);
 		bestGreenStartDamage = (bestGreenStartDamageObj != null) ? bestGreenStartDamageObj : -1;
 		
-		// Load recent kill times (stored as comma-separated string)
 		String recentKillsStr = configManager.getConfiguration("arraxxor", "recentKillTimes", String.class);
 		recentKillTimesCount = 0;
 		recentKillTimesIndex = 0;
@@ -1507,7 +1258,7 @@ public class AraxxorPlugin extends Plugin
 					long killTime = Long.parseLong(part.trim());
 					recentKillTimes[recentKillTimesCount] = killTime;
 					recentKillTimesCount++;
-					if (recentKillTimesCount >= 5) break; // Don't exceed buffer size
+					if (recentKillTimesCount >= 5) break;
 				}
 				catch (NumberFormatException e)
 				{
@@ -1517,22 +1268,18 @@ public class AraxxorPlugin extends Plugin
 			recentKillTimesIndex = recentKillTimesCount % 5;
 		}
 		
-		// Load kill count
 		Integer killCountObj = configManager.getConfiguration("arraxxor", "killCount", Integer.class);
 		killCount = (killCountObj != null) ? killCountObj : 0;
 		
-		// Load last kill timestamp for kills/hour decay calculation
 		Long lastKillTimestampObj = configManager.getConfiguration("arraxxor", "lastKillTimestamp", Long.class);
 		lastKillTimestamp = (lastKillTimestampObj != null) ? lastKillTimestampObj : -1L;
 		
-		// Load last fight phase times for split comparison
 		Long lastFightNormalTimeObj = configManager.getConfiguration("arraxxor", "lastFightNormalTime", Long.class);
 		lastFightNormalTime = (lastFightNormalTimeObj != null) ? lastFightNormalTimeObj : -1L;
 		
 		Long lastFightEnrageTimeObj = configManager.getConfiguration("arraxxor", "lastFightEnrageTime", Long.class);
 		lastFightEnrageTime = (lastFightEnrageTimeObj != null) ? lastFightEnrageTimeObj : -1L;
 		
-		// Load last fight stats for split comparison
 		Integer lastFightHitsObj = configManager.getConfiguration("arraxxor", "lastFightHits", Integer.class);
 		lastFightHits = (lastFightHitsObj != null) ? lastFightHitsObj : 0;
 		
@@ -1568,7 +1315,6 @@ public class AraxxorPlugin extends Plugin
 		configManager.setConfiguration("arraxxor", "bestRedStartDamage", bestRedStartDamage);
 		configManager.setConfiguration("arraxxor", "bestGreenStartDamage", bestGreenStartDamage);
 		
-		// Save recent kill times as comma-separated string
 		String[] killTimeStrings = new String[recentKillTimesCount];
 		for (int i = 0; i < recentKillTimesCount; i++)
 		{
@@ -1576,17 +1322,10 @@ public class AraxxorPlugin extends Plugin
 		}
 		configManager.setConfiguration("arraxxor", "recentKillTimes", String.join(",", killTimeStrings));
 		
-		// Save kill count
 		configManager.setConfiguration("arraxxor", "killCount", killCount);
-		
-		// Save last kill timestamp for kills/hour decay calculation
 		configManager.setConfiguration("arraxxor", "lastKillTimestamp", lastKillTimestamp);
-		
-		// Save last fight phase times for split comparison
 		configManager.setConfiguration("arraxxor", "lastFightNormalTime", lastFightNormalTime);
 		configManager.setConfiguration("arraxxor", "lastFightEnrageTime", lastFightEnrageTime);
-		
-		// Save last fight stats for split comparison (hits, damage dealt, damage taken)
 		configManager.setConfiguration("arraxxor", "lastFightHits", lastFightHits);
 		configManager.setConfiguration("arraxxor", "lastFightDamageDealt", lastFightDamageDealt);
 		configManager.setConfiguration("arraxxor", "lastFightDamageTaken", lastFightDamageTaken);
@@ -1603,62 +1342,38 @@ public class AraxxorPlugin extends Plugin
 			return;
 		}
 		
-		// Increment kill count if this is a successful kill
-		// This ensures killCount is incremented before saving stats
 		if (araxxorReachedZeroHp)
 		{
 			killCount++;
 		}
 		
-		// Save last fight's stats before updating best
 		lastFightHits = currentFightHits;
 		lastFightDamageDealt = currentFightDamageDealt;
 		lastFightDamageTaken = currentFightDamageTaken;
 		
-		// Update best kill time
+		// Update best time and ALL associated stats from this PB kill
+		// (hits, damage, normal time, enrage time all come from the same kill)
 		if (bestKillTime == -1 || killTime < bestKillTime)
 		{
 			bestKillTime = killTime;
+			bestHitCount = currentFightHits;
+			bestDamageTaken = currentFightDamageTaken;
+			
+			// Save normal/enrage times from this same PB kill
+			if (enrageStartTime > 0)
+			{
+				bestTimeToEnrage = enrageStartTime - fightStartTime;
+				bestTimeInEnrage = fightEndTime - enrageStartTime;
+			}
 		}
 
-		// Update rotation-specific best times, hits, and damage
 		if (currentRotationStart != null)
 		{
 			updateRotationStats(currentRotationStart, killTime, currentFightHits, currentFightDamageTaken);
 		}
 		
-		// Update best hit count (MORE hits is better - more DPS)
-		if (bestHitCount == -1 || currentFightHits > bestHitCount)
-		{
-			bestHitCount = currentFightHits;
-		}
-
-		// Update best damage taken (LESS damage is better)
-		if (bestDamageTaken == -1 || currentFightDamageTaken < bestDamageTaken)
-		{
-			bestDamageTaken = currentFightDamageTaken;
-		}
-		
-		// Update best time to enrage
-		if (enrageStartTime > 0)
-		{
-			long timeToEnrage = enrageStartTime - fightStartTime;
-			if (bestTimeToEnrage == -1 || timeToEnrage < bestTimeToEnrage)
-			{
-				bestTimeToEnrage = timeToEnrage;
-			}
-
-			// Update best time in enrage phase
-			long timeInEnrage = fightEndTime - enrageStartTime;
-			if (bestTimeInEnrage == -1 || timeInEnrage < bestTimeInEnrage)
-			{
-				bestTimeInEnrage = timeInEnrage;
-			}
-		}
-		
-		// Update recent kill times (circular buffer - keep last 5)
 		recentKillTimes[recentKillTimesIndex] = killTime;
-		recentKillTimesIndex = (recentKillTimesIndex + 1) % 5; // Circular wrap
+		recentKillTimesIndex = (recentKillTimesIndex + 1) % 5;
 		if (recentKillTimesCount < 5)
 		{
 			recentKillTimesCount++;
@@ -1666,7 +1381,6 @@ public class AraxxorPlugin extends Plugin
 		
 		// Update last kill timestamp for kills/hour decay calculation
 		lastKillTimestamp = System.currentTimeMillis();
-		// Invalidate kills/hour cache (will recalculate on next call)
 		cachedKillsPerHourTimestamp = -1;
 		
 		// Save to config
@@ -1700,7 +1414,6 @@ public class AraxxorPlugin extends Plugin
 		bestGreenStartDamage = -1;
 		killCount = 0;
 		
-		// Clear recent kill times array
 		for (int i = 0; i < recentKillTimes.length; i++)
 		{
 			recentKillTimes[i] = 0;
@@ -1708,7 +1421,6 @@ public class AraxxorPlugin extends Plugin
 		recentKillTimesCount = 0;
 		recentKillTimesIndex = 0;
 		
-		// Reset kills/hour tracking
 		lastKillTimestamp = -1;
 		cachedKillsPerHour = 0.0;
 		
@@ -1952,27 +1664,18 @@ public class AraxxorPlugin extends Plugin
 		return cachedKillsPerHour;
 	}
 	
-	/**
-	 * Get egg history count (performance optimization - avoids creating list)
-	 */
 	public int getEggHistoryCount()
 	{
 		return eggHistoryCount;
 	}
 	
-	/**
-	 * Get egg history as List for compatibility with existing code
-	 * Cached for performance - only recreated when eggHistory changes
-	 */
 	public java.util.List<AraxxorEggType> getEggHistory()
 	{
-		// Return cached list if it's still valid
 		if (cachedEggHistoryList != null && cachedEggHistoryListVersion == eggHistoryCount)
 		{
 			return cachedEggHistoryList;
 		}
 		
-		// Create new list and cache it
 		java.util.List<AraxxorEggType> list = new java.util.ArrayList<>(eggHistoryCount);
 		for (int i = 0; i < eggHistoryCount; i++)
 		{
@@ -1990,30 +1693,23 @@ public class AraxxorPlugin extends Plugin
 			return -1;
 		}
 		
-		// Use cached value if fight has ended (time is frozen)
-		// Only recalculate if fight is still active (time changes)
 		if (fightEndTime != -1 || deathTime != -1)
 		{
-			// Fight has ended - time is frozen, use cached value if available
 			if (cachedTimeInEnrage >= 0 && cachedTimeInEnrageCalculationTime == enrageStartTime)
 			{
 				return cachedTimeInEnrage;
 			}
 			
-			// Calculate and cache
 			long currentTime = (fightEndTime != -1) ? fightEndTime : deathTime;
 			cachedTimeInEnrage = (currentTime - enrageStartTime) + 1000;
 			cachedTimeInEnrageCalculationTime = enrageStartTime;
 			return cachedTimeInEnrage;
 		}
 		
-		// Fight is still active - recalculate (time changes every frame)
 		long currentTime = System.currentTimeMillis();
 		return (currentTime - enrageStartTime) + 1000;
 	}
 
-	// ==================== Loot Tracking ====================
-	
 	/**
 	 * Handle loot received from Araxxor kill
 	 */
@@ -2023,20 +1719,16 @@ public class AraxxorPlugin extends Plugin
 		final net.runelite.api.NPCComposition npc = event.getComposition();
 		int npcId = npc.getId();
 		
-		// Filter for Araxxor only
 		if (npcId != ARAXXOR_NPC_ID && npcId != ARAXXOR_DEAD_ID)
 		{
 			return;
 		}
 		
-		// Track loot if Araxxor reached 0 HP (even if fight just ended)
-		// The loot event can fire slightly after stopFight() is called
 		if (!araxxorReachedZeroHp)
 		{
 			return;
 		}
 		
-		// Create kill record
 		AraxxorKillRecord kill = new AraxxorKillRecord();
 		kill.setTimestamp(System.currentTimeMillis());
 		kill.setKillTime(getElapsedTime());
@@ -2045,14 +1737,12 @@ public class AraxxorPlugin extends Plugin
 		kill.setDamageDealt(currentFightDamageDealt);
 		kill.setDamageTaken(currentFightDamageTaken);
 		
-		// Aggregate loot and cache item names (we're on client thread)
 		long totalValue = 0;
 		for (ItemStack item : event.getItems())
 		{
 			int itemId = item.getId();
 			kill.getLoot().merge(itemId, (long)item.getQuantity(), Long::sum);
 			
-			// Use custom price from config panel if available, otherwise use item manager price
 			int price;
 			if (configPanel != null)
 			{
@@ -2060,7 +1750,6 @@ public class AraxxorPlugin extends Plugin
 				price = configPanel.getCachedItemPrice(itemId);
 				if (price <= 0)
 				{
-					// Fallback to item manager if custom price not available
 					price = itemManager.getItemPrice(itemId);
 				}
 			}
@@ -2071,7 +1760,6 @@ public class AraxxorPlugin extends Plugin
 			
 			totalValue += (long)price * item.getQuantity();
 			
-			// Pre-populate item name cache for UI (we're on client thread)
 			if (configPanel != null)
 			{
 				configPanel.cacheItemName(itemId);
@@ -2079,41 +1767,32 @@ public class AraxxorPlugin extends Plugin
 		}
 		kill.setLootValue(totalValue);
 		
-		// Check if this is a new session (45+ min gap since last kill)
 		long currentTime = System.currentTimeMillis();
 		boolean isNewSession = (lastKillTimestamp != -1 && (currentTime - lastKillTimestamp) > SESSION_TIMEOUT_MS);
 		
 		if (isNewSession)
 		{
-			// New session detected - clear session data
-			// Note: tripKills persist until player leaves area (handled by resetTrip)
 			sessionKills.clear();
 			cachedSessionTotalValue = 0;
 			
-			// Clear item caches to prevent memory leak
 			if (configPanel != null)
 			{
 				configPanel.clearItemCaches();
 			}
 		}
 		
-		// Update last kill timestamp (used for both kills/hour decay and session detection)
 		lastKillTimestamp = currentTime;
 		
-		// Limit trip kills BEFORE adding to prevent unbounded growth
 		if (tripKills.size() >= MAX_TRIP_KILLS)
 		{
 			tripKills.remove(0);
 		}
 		tripKills.add(kill);
 		
-		// Limit session kills BEFORE adding to prevent unbounded growth
 		if (sessionKills.size() >= MAX_SESSION_KILLS)
 		{
-			// Remove oldest kill
 			AraxxorKillRecord oldest = sessionKills.remove(0);
 			cachedSessionTotalValue -= oldest.getLootValue();
-			// Remove from config
 			if (configManager != null)
 			{
 				configManager.unsetConfiguration("arraxxor", "kill_" + oldest.getTimestamp());
@@ -2121,13 +1800,10 @@ public class AraxxorPlugin extends Plugin
 		}
 		sessionKills.add(kill);
 		
-		// Update cached totals
 		cachedSessionTotalValue += totalValue;
 		
-		// Save to config (old kill purging already handled above)
 		saveKillToConfig(kill);
 		
-		// Refresh UI to show new kill
 		if (configPanel != null)
 		{
 			configPanel.refreshStats();
@@ -2144,16 +1820,8 @@ public class AraxxorPlugin extends Plugin
 			return;
 		}
 		
-		// Note: Storage limit checking and old kill purging is done in onServerNpcLoot()
-		// before adding to sessionKills, and old kill purging (by age) is done on startup
-		// in loadKillsFromConfig() to avoid expensive iteration on every kill save
-		
-		// Save kill to config
-		// Format: timestamp|killTime|rotation|lootValue|hits|damageDealt|damageTaken|lootItems
-		// lootItems format: itemId:quantity,itemId:quantity,...
 		String key = "kill_" + kill.getTimestamp();
 		
-		// Serialize loot items
 		StringBuilder lootItemsStr = new StringBuilder();
 		if (kill.getLoot() != null && !kill.getLoot().isEmpty())
 		{
@@ -2185,7 +1853,6 @@ public class AraxxorPlugin extends Plugin
 		}
 		catch (Exception e)
 		{
-			// Silently handle save failures
 		}
 	}
 	
@@ -2202,20 +1869,17 @@ public class AraxxorPlugin extends Plugin
 		sessionKills.clear();
 		cachedSessionTotalValue = 0;
 		
-		// Load all kill records from config
 		Instant cutoff = Instant.now().minus(MAX_AGE);
-		// getConfigurationKeys takes a full prefix like "arraxxor.kill_"
 		List<String> fullKeys = configManager.getConfigurationKeys("arraxxor.kill_");
 		
 		for (String fullKey : fullKeys)
 		{
-			// Extract just the key part (after "arraxxor.")
 			String[] parts = fullKey.split("\\.", 2);
 			if (parts.length != 2)
 			{
 				continue;
 			}
-			String key = parts[1]; // Get the part after "arraxxor."
+			String key = parts[1];
 			
 			String value = configManager.getConfiguration("arraxxor", key, String.class);
 			if (value == null)
@@ -2225,25 +1889,21 @@ public class AraxxorPlugin extends Plugin
 			
 			try
 			{
-				// Security: Limit value length to prevent DoS
 				if (value.length() > 10000)
 				{
 					continue;
 				}
 				
-				String[] valueParts = value.split("\\|", 8); // Limit split to prevent DoS
-				// Format: timestamp|killTime|rotation|lootValue|hits|damageDealt|damageTaken|lootItems
+				String[] valueParts = value.split("\\|", 8);
 				if (valueParts.length >= 7)
 				{
 					long timestamp = Long.parseLong(valueParts[0]);
 					
-					// Security: Validate timestamp bounds
-					if (timestamp < 0 || timestamp > System.currentTimeMillis() + 86400000L) // Max 1 day in future
+					if (timestamp < 0 || timestamp > System.currentTimeMillis() + 86400000L)
 					{
 						continue;
 					}
 					
-					// Skip if too old
 					if (Instant.ofEpochMilli(timestamp).isBefore(cutoff))
 					{
 						configManager.unsetConfiguration("arraxxor", key);
@@ -2253,9 +1913,8 @@ public class AraxxorPlugin extends Plugin
 					AraxxorKillRecord kill = new AraxxorKillRecord();
 					kill.setTimestamp(timestamp);
 					
-					// Security: Validate kill time bounds
 					long killTime = Long.parseLong(valueParts[1]);
-					if (killTime < 0 || killTime > 3600000L) // Max 1 hour
+					if (killTime < 0 || killTime > 3600000L)
 					{
 						continue;
 					}
@@ -2270,15 +1929,13 @@ public class AraxxorPlugin extends Plugin
 						kill.setRotation(null);
 					}
 					
-					// Security: Validate loot value bounds
 					long lootValue = Long.parseLong(valueParts[3]);
-					if (lootValue < 0 || lootValue > Long.MAX_VALUE / 2) // Reasonable max
+					if (lootValue < 0 || lootValue > Long.MAX_VALUE / 2)
 					{
 						continue;
 					}
 					kill.setLootValue(lootValue);
 					
-					// Security: Validate hits/damage bounds
 					int hits = Integer.parseInt(valueParts[4]);
 					int damageDealt = Integer.parseInt(valueParts[5]);
 					int damageTaken = Integer.parseInt(valueParts[6]);
@@ -2291,31 +1948,27 @@ public class AraxxorPlugin extends Plugin
 					kill.setDamageDealt(damageDealt);
 					kill.setDamageTaken(damageTaken);
 					
-					// Load loot items if present (valueParts[7])
 					if (valueParts.length >= 8 && !valueParts[7].isEmpty())
 					{
-						// Security: Limit loot items string length
 						if (valueParts[7].length() > 5000)
 						{
 							continue;
 						}
 						
-						String[] lootItems = valueParts[7].split(",", 100); // Limit to 100 items
+						String[] lootItems = valueParts[7].split(",", 100);
 						for (String lootItem : lootItems)
 						{
-							// Security: Limit item string length
 							if (lootItem.length() > 50)
 							{
 								continue;
 							}
 							
-							String[] itemParts = lootItem.split(":", 2); // Limit split
+							String[] itemParts = lootItem.split(":", 2);
 							if (itemParts.length == 2)
 							{
 								int itemId = Integer.parseInt(itemParts[0]);
 								long quantity = Long.parseLong(itemParts[1]);
 								
-								// Security: Validate item ID and quantity bounds
 								if (itemId < 0 || itemId > Integer.MAX_VALUE || quantity < 0 || quantity > 1000000L)
 								{
 									continue;
@@ -2331,13 +1984,11 @@ public class AraxxorPlugin extends Plugin
 					cachedSessionTotalValue += kill.getLootValue();
 				}
 			}
-			catch (Exception e)
-			{
-				// Skip invalid entries silently
-			}
+		catch (Exception e)
+		{
+		}
 		}
 		
-		// Set lastKillTimestamp to most recent kill for session detection
 		if (!sessionKills.isEmpty())
 		{
 			sessionKills.sort(Comparator.comparingLong(AraxxorKillRecord::getTimestamp));
@@ -2345,13 +1996,10 @@ public class AraxxorPlugin extends Plugin
 			lastKillTimestamp = mostRecent.getTimestamp();
 		}
 		
-		// Cache item names/prices on client thread after loading (defer to avoid thread issues)
 		if (!sessionKills.isEmpty() && configPanel != null && clientThread != null)
 		{
-			// Capture configPanel reference to avoid race condition if plugin shuts down
 			AraxxorConfigPanel panelRef = configPanel;
 			clientThread.invokeLater(() -> {
-				// Re-check configPanel is still valid (plugin might have shut down)
 				if (panelRef == null)
 				{
 					return;
@@ -2359,7 +2007,6 @@ public class AraxxorPlugin extends Plugin
 				
 				for (AraxxorKillRecord kill : sessionKills)
 				{
-					// Cache loot item names/prices
 					if (kill.getLoot() != null)
 					{
 						for (int itemId : kill.getLoot().keySet())
@@ -2369,7 +2016,6 @@ public class AraxxorPlugin extends Plugin
 						}
 					}
 				}
-				// Refresh UI after caching
 				panelRef.refreshStats();
 			});
 		}
@@ -2390,7 +2036,7 @@ public class AraxxorPlugin extends Plugin
 	{
 		BufferedImage fallback = new BufferedImage(16, 16, BufferedImage.TYPE_INT_ARGB);
 		java.awt.Graphics2D g = fallback.createGraphics();
-		g.setColor(new java.awt.Color(139, 69, 19)); // Brown color similar to spider
+		g.setColor(new java.awt.Color(139, 69, 19));
 		g.fillRect(0, 0, 16, 16);
 		g.setColor(java.awt.Color.WHITE);
 		g.drawString("A", 4, 12);
@@ -2408,13 +2054,11 @@ public class AraxxorPlugin extends Plugin
 			AsyncBufferedImage asyncImage = itemManager.getImage(ItemID.ARAXXORPET);
 			if (asyncImage != null)
 			{
-				// Update icon when image loads
 				asyncImage.onLoaded(() ->
 				{
 					if (navButton != null)
 					{
 						BufferedImage resizedIcon = ImageUtil.resizeImage(asyncImage, 16, 16);
-						// Create a new NavigationButton with updated icon
 						NavigationButton updatedButton = NavigationButton.builder()
 							.tooltip(navButton.getTooltip())
 							.icon(resizedIcon)
@@ -2422,10 +2066,8 @@ public class AraxxorPlugin extends Plugin
 							.panel(navButton.getPanel())
 							.build();
 						
-						// Replace the old button with the new one
 						clientToolbar.removeNavigation(navButton);
 						navButton = updatedButton;
-						// Always show sidebar icon
 						clientToolbar.addNavigation(navButton);
 					}
 				});
@@ -2433,7 +2075,6 @@ public class AraxxorPlugin extends Plugin
 		}
 		catch (Exception e)
 		{
-			// Silently handle icon load failures
 		}
 	}
 }

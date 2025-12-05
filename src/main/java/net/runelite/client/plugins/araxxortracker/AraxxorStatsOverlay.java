@@ -8,12 +8,10 @@ import java.awt.Rectangle;
 import java.util.ArrayList;
 import java.util.List;
 import javax.inject.Inject;
-import lombok.extern.slf4j.Slf4j;
 import net.runelite.client.ui.overlay.OverlayLayer;
 import net.runelite.client.ui.overlay.OverlayPanel;
 import net.runelite.client.ui.overlay.components.LineComponent;
 
-@Slf4j
 public class AraxxorStatsOverlay extends OverlayPanel
 {
 	private final AraxxorPlugin plugin;
@@ -162,10 +160,8 @@ public class AraxxorStatsOverlay extends OverlayPanel
 		int lastDamageDealt = plugin.getLastFightDamageDealt();
 		int lastDamageTaken = plugin.getLastFightDamageTaken();
 		
-		// Check if we have valid last kill data
 		if (lastTotal <= 0 && lastHits <= 0)
 		{
-			// No last kill - show waiting message
 			addLineLeft("Get a kill", "", Color.WHITE);
 			return;
 		}
@@ -270,7 +266,6 @@ public class AraxxorStatsOverlay extends OverlayPanel
 	
 	private void addLineLeft(String left, String right, Color color)
 	{
-		// Put content in left field to ensure left alignment
 		String combined = left;
 		if (!left.isEmpty() && !right.isEmpty())
 		{
@@ -530,11 +525,15 @@ public class AraxxorStatsOverlay extends OverlayPanel
 
 		if (minutes > 0)
 		{
-			return minutes + ":" + String.format("%02d", seconds);
+			StringBuilder sb = new StringBuilder(8);
+			sb.append(minutes).append(':');
+			if (seconds < 10) sb.append('0');
+			sb.append(seconds);
+			return sb.toString();
 		}
 		else
 		{
-			return String.valueOf(seconds) + "s";
+			return seconds + "s";
 		}
 	}
 	
@@ -550,11 +549,15 @@ public class AraxxorStatsOverlay extends OverlayPanel
 		
 		if (minutes > 0)
 		{
-			return minutes + ":" + String.format("%02d", seconds);
+			StringBuilder sb = new StringBuilder(8);
+			sb.append(minutes).append(':');
+			if (seconds < 10) sb.append('0');
+			sb.append(seconds);
+			return sb.toString();
 		}
 		else
 		{
-			return String.valueOf(seconds) + "s";
+			return seconds + "s";
 		}
 	}
 	
@@ -569,14 +572,20 @@ public class AraxxorStatsOverlay extends OverlayPanel
 		long seconds = totalSeconds % 60;
 		
 		// Format as :30 when under a minute, or 1:30 when over a minute
+		StringBuilder sb = new StringBuilder(8);
 		if (minutes > 0)
 		{
-			return minutes + ":" + String.format("%02d", seconds);
+			sb.append(minutes).append(':');
+			if (seconds < 10) sb.append('0');
+			sb.append(seconds);
 		}
 		else
 		{
-			return ":" + String.format("%02d", seconds);
+			sb.append(':');
+			if (seconds < 10) sb.append('0');
+			sb.append(seconds);
 		}
+		return sb.toString();
 	}
 	
 

@@ -59,3 +59,11 @@ tasks.register('shadowJar', Jar) {
 	archiveClassifier.set('shadow')
 	archiveFileName.set("${rootProject.name}-${project.version}-all.jar")
 }
+
+tasks.register('runClient', JavaExec) {
+	group = 'application'
+	description = 'Run RuneLite with the plugin loaded'
+	classpath = sourceSets.test.runtimeClasspath
+	mainClass = 'net.runelite.client.plugins.araxxortracker.AraxxorPluginTest'
+	jvmArgs = ['-ea']
+}
