@@ -685,6 +685,8 @@ public class AraxxorPlugin extends Plugin
 		cachedEggHistoryListVersion = -1;
 		
 		firstEggType = null;
+		currentRotationStart = null;
+		firstEggPosition = null;
 		
 		activeMinions.clear();
 	}
@@ -758,6 +760,8 @@ public class AraxxorPlugin extends Plugin
 		eggHistoryIndex.clear();
 		cachedEggHistoryList = null;
 		cachedEggHistoryListVersion = -1;
+		firstEggType = null;
+		currentRotationStart = null;
 		firstEggPosition = null;
 
 		for (int i = 0; i < eggTimingsCount; i++)
@@ -765,7 +769,6 @@ public class AraxxorPlugin extends Plugin
 			eggTimings[i] = null;
 		}
 		eggTimingsCount = 0;
-
 
 		activeMinions.clear();
 	}

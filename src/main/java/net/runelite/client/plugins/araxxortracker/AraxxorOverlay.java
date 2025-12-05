@@ -193,7 +193,14 @@ class AraxxorOverlay extends OverlayPanel
 				rightText += formatWithColor(totalSplit.text, splitColor);
 			}
 			
-			addLine(LABEL_TIME, rightText, COLOR_WHITE);
+			// Show colored rotation indicator (smaller outline circle for minimal mode)
+			String leftLabel = LABEL_TIME;
+			if (currentRotationStart != null)
+			{
+				leftLabel = ColorUtil.colorTag(currentRotationStart.getColor()) + "○" + ColorUtil.colorTag(COLOR_WHITE) + " " + LABEL_TIME;
+			}
+			
+			addLine(leftLabel, rightText, COLOR_WHITE);
 			
 			return super.render(graphics);
 		}
@@ -254,7 +261,8 @@ class AraxxorOverlay extends OverlayPanel
 		StartRotationInfo startRotationInfo = null;
 		if (hasFightStarted && !showAsFightEnded)
 		{
-			renderActiveFightSection();
+			// Show rotation during fight
+			startRotationInfo = renderStartRotationInFight();
 		}
 		else if (!hasFightStarted)
 		{
@@ -289,7 +297,8 @@ class AraxxorOverlay extends OverlayPanel
 
 		Dimension mainDimension = super.render(graphics);
 
-		if (showAsFightEnded && mainDimension != null && startRotationInfo != null)
+		// Show colored circle for rotation (both during and after fight)
+		if (hasFightStarted && mainDimension != null && startRotationInfo != null)
 		{
 			renderStartCircle(graphics, mainDimension, startRotationInfo);
 		}
@@ -309,13 +318,29 @@ class AraxxorOverlay extends OverlayPanel
 		panelComponent.setBorder(PANEL_BORDER);
 	}
 	
-	private void renderActiveFightSection()
+	/**
+	 * Render start rotation during fight - shows colored circle indicator
+	 * @return StartRotationInfo for circle rendering, null if no rotation detected
+	 */
+	private StartRotationInfo renderStartRotationInFight()
 	{
+		AraxxorEggType startRotation = plugin.getCurrentRotationStart();
+		if (startRotation == null)
+		{
+			return null;
+		}
+		
+		int lineIndex = panelComponent.getChildren().size();
+		// Just show colored circle
+		String coloredCircle = ColorUtil.colorTag(startRotation.getColor()) + "◯" + ColorUtil.colorTag(COLOR_WHITE);
+		addLine(LABEL_START, coloredCircle, COLOR_WHITE);
+		
+		return new StartRotationInfo(startRotation, lineIndex);
 	}
 
 	/**
-	 * Render start rotation line and return info for circle rendering if post-fight
-	 * @return StartRotationInfo if post-fight and should render circle, null otherwise
+	 * Render start rotation line and return info for circle rendering (post-fight)
+	 * @return StartRotationInfo for circle rendering, null if no rotation
 	 */
 	private StartRotationInfo renderStartRotation()
 	{
@@ -324,30 +349,14 @@ class AraxxorOverlay extends OverlayPanel
 		{
 			return null;
 		}
-		
-		boolean isPostFight = plugin.isAraxxorReachedZeroHp();
-		
-		if (!isPostFight && plugin.getEggHistoryCount() >= 2)
-		{
-			return null;
-		}
 
-		if (isPostFight)
-		{
-			int lineIndex = panelComponent.getChildren().size();
-			
-			String specialAttackName = startRotation.getAttackName();
-			String startDisplay = startRotation.getIcon() + " (" + specialAttackName + ")";
-			addLine(LABEL_START, startDisplay, COLOR_WHITE);
-			
-			return new StartRotationInfo(startRotation, lineIndex);
-		}
-		else
-		{
-			String startText = startRotation.getIcon() + " (" + startRotation.getAttackName() + ")";
-			addLine(LABEL_START, startText, COLOR_GOLD);
-			return null;
-		}
+		int lineIndex = panelComponent.getChildren().size();
+		
+		// Just show colored circle
+		String coloredCircle = ColorUtil.colorTag(startRotation.getColor()) + "◯" + ColorUtil.colorTag(COLOR_WHITE);
+		addLine(LABEL_START, coloredCircle, COLOR_WHITE);
+		
+		return new StartRotationInfo(startRotation, lineIndex);
 	}
 	
 	private void renderWaitingSection()
