@@ -208,11 +208,20 @@ class AraxxorOverlay extends OverlayPanel
 		boolean showAlways = config.showWhenInactive();
 		if (!showAlways)
 		{
-			if (!isInBossArea && !config.showPreFightStats())
+			// When "Show When Inactive" is disabled, hide overlay entirely when not fighting
+			if (!isInBossArea)
 			{
 				return null;
 			}
 			
+			if (!hasFightStarted)
+			{
+				return null;
+			}
+		}
+		else
+		{
+			// When "Show When Inactive" is enabled, show pre-fight stats if configured
 			if (!isInBossArea && config.showPreFightStats())
 			{
 				setupPanelStyling();
@@ -220,14 +229,7 @@ class AraxxorOverlay extends OverlayPanel
 				return super.render(graphics);
 			}
 			
-			if (!hasFightStarted && !config.showPreFightStats())
-			{
-				return null;
-			}
-		}
-		else
-		{
-			if (!isInBossArea && config.showPreFightStats())
+			if (!hasFightStarted && config.showPreFightStats())
 			{
 				setupPanelStyling();
 				renderWaitingSection();
