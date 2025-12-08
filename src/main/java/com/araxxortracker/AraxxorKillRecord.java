@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.araxxortracker;
+package com.araxxortracker;
 
 import lombok.Getter;
 import lombok.Setter;

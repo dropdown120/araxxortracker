@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.araxxortracker;
+package com.araxxortracker;
 
 /**
  * Represents the combat phases of Araxxor

@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.araxxortracker;
+package com.araxxortracker;
 
 import net.runelite.client.config.Config;
 import net.runelite.client.config.ConfigGroup;

@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.araxxortracker;
+package com.araxxortracker;
 
 public enum OverlayMode
 {

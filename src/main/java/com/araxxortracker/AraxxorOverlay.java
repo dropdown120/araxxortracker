@@ -1,5 +1,5 @@
 
-package net.runelite.client.plugins.araxxortracker;
+package com.araxxortracker;
 
 import java.awt.Color;
 import java.awt.Dimension;
@@ -193,14 +193,7 @@ class AraxxorOverlay extends OverlayPanel
 				rightText += formatWithColor(totalSplit.text, splitColor);
 			}
 			
-			// Show colored rotation indicator (smaller outline circle for minimal mode)
-			String leftLabel = LABEL_TIME;
-			if (currentRotationStart != null)
-			{
-				leftLabel = ColorUtil.colorTag(currentRotationStart.getColor()) + "○" + ColorUtil.colorTag(COLOR_WHITE) + " " + LABEL_TIME;
-			}
-			
-			addLine(leftLabel, rightText, COLOR_WHITE);
+			addLine(LABEL_TIME, rightText, COLOR_WHITE);
 			
 			return super.render(graphics);
 		}
@@ -261,12 +254,7 @@ class AraxxorOverlay extends OverlayPanel
 		setupPanelStyling();
 
 		StartRotationInfo startRotationInfo = null;
-		if (hasFightStarted && !showAsFightEnded)
-		{
-			// Show rotation during fight
-			startRotationInfo = renderStartRotationInFight();
-		}
-		else if (!hasFightStarted)
+		if (!hasFightStarted)
 		{
 			renderWaitingSection();
 		}
@@ -319,7 +307,7 @@ class AraxxorOverlay extends OverlayPanel
 		panelComponent.setBackgroundColor(COLOR_BACKGROUND);
 		panelComponent.setBorder(PANEL_BORDER);
 	}
-	
+
 	/**
 	 * Render start rotation during fight - shows colored circle indicator
 	 * @return StartRotationInfo for circle rendering, null if no rotation detected
@@ -352,13 +340,13 @@ class AraxxorOverlay extends OverlayPanel
 			return null;
 		}
 
-		int lineIndex = panelComponent.getChildren().size();
-		
+			int lineIndex = panelComponent.getChildren().size();
+			
 		// Just show colored circle
 		String coloredCircle = ColorUtil.colorTag(startRotation.getColor()) + "◯" + ColorUtil.colorTag(COLOR_WHITE);
 		addLine(LABEL_START, coloredCircle, COLOR_WHITE);
-		
-		return new StartRotationInfo(startRotation, lineIndex);
+			
+			return new StartRotationInfo(startRotation, lineIndex);
 	}
 	
 	private void renderWaitingSection()

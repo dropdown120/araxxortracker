@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.araxxortracker;
+package com.araxxortracker;
 
 import com.google.inject.Provides;
 import java.awt.image.BufferedImage;
@@ -419,13 +419,13 @@ public class AraxxorPlugin extends Plugin
 
 	@Subscribe
 	public void onGameTick(GameTick event)
-	{
-		if (!isFightActive)
 		{
-			return;
-		}
+			if (!isFightActive)
+			{
+				return;
+			}
 
-		currentGameTick++;
+			currentGameTick++;
 	}
 
 	@Subscribe
@@ -440,49 +440,49 @@ public class AraxxorPlugin extends Plugin
 	
 	@Subscribe
 	public void onAnimationChanged(AnimationChanged event)
-	{
-		if (!isFightActive)
 		{
-			return;
-		}
-		
-		if (araxxorReachedZeroHp)
-		{
-			return;
-		}
+			if (!isFightActive)
+			{
+				return;
+			}
+			
+			if (araxxorReachedZeroHp)
+			{
+				return;
+			}
 
-		Actor actor = event.getActor();
+			Actor actor = event.getActor();
 
-		if (actor instanceof NPC && isAraxxor((NPC) actor))
-		{
-			handleAraxxorAnimation((NPC) actor);
+			if (actor instanceof NPC && isAraxxor((NPC) actor))
+			{
+				handleAraxxorAnimation((NPC) actor);
 		}
 	}
 	
 	@Subscribe
 	public void onHitsplatApplied(HitsplatApplied event)
-	{
-		if (!isFightActive)
 		{
-			return;
-		}
-		
-		if (event.getActor() instanceof NPC && isAraxxor((NPC) event.getActor()))
-		{
-			Hitsplat hitsplat = event.getHitsplat();
-			if (hitsplat.isMine() && hitsplat.getAmount() > 0)
+			if (!isFightActive)
 			{
-				currentFightHits++;
-				currentFightDamageDealt += hitsplat.getAmount();
+				return;
 			}
-		}
-
-		if (event.getActor() == client.getLocalPlayer())
-		{
-			int damage = event.getHitsplat().getAmount();
-			if (damage > 0)
+			
+			if (event.getActor() instanceof NPC && isAraxxor((NPC) event.getActor()))
 			{
-				currentFightDamageTaken += damage;
+				Hitsplat hitsplat = event.getHitsplat();
+				if (hitsplat.isMine() && hitsplat.getAmount() > 0)
+				{
+					currentFightHits++;
+					currentFightDamageDealt += hitsplat.getAmount();
+				}
+			}
+
+			if (event.getActor() == client.getLocalPlayer())
+			{
+				int damage = event.getHitsplat().getAmount();
+				if (damage > 0)
+				{
+					currentFightDamageTaken += damage;
 			}
 		}
 	}
@@ -504,105 +504,105 @@ public class AraxxorPlugin extends Plugin
 
 	@Subscribe
 	public void onNpcSpawned(NpcSpawned event)
-	{
-		NPC npc = event.getNpc();
-		if (npc == null)
 		{
-			return;
-		}
-		
-		int npcId = npc.getId();
-
-		if (npcId == ARAXXOR_NPC_ID)
-		{
-			araxxorNpc = npc;
-			startFight();
-			return;
-		}
-
-		if (!isFightActive)
-		{
-			return;
-		}
-
-		if (AraxxorEggType.isEgg(npcId))
-		{
-			WorldPoint position = npc.getWorldLocation();
-			if (position != null)
+			NPC npc = event.getNpc();
+			if (npc == null)
 			{
-				handleEggSpawned(npcId, position);
+				return;
 			}
-		}
-		else if (AraxxorEggType.isMinion(npcId))
-		{
-			handleMinionSpawned(npcId);
+			
+			int npcId = npc.getId();
+
+			if (npcId == ARAXXOR_NPC_ID)
+			{
+				araxxorNpc = npc;
+				startFight();
+				return;
+			}
+
+			if (!isFightActive)
+			{
+				return;
+			}
+
+			if (AraxxorEggType.isEgg(npcId))
+			{
+				WorldPoint position = npc.getWorldLocation();
+				if (position != null)
+				{
+					handleEggSpawned(npcId, position);
+				}
+			}
+			else if (AraxxorEggType.isMinion(npcId))
+			{
+				handleMinionSpawned(npcId);
 		}
 	}
 
 	@Subscribe
 	public void onNpcDespawned(NpcDespawned event)
-	{
-		NPC npc = event.getNpc();
-		if (npc == null)
 		{
-			return;
-		}
-		
-		int npcId = npc.getId();
-
-		if (npcId == ARAXXOR_NPC_ID || npcId == ARAXXOR_DEAD_ID)
-		{
-			stopFight();
-			araxxorNpc = null;
-			cachedInAraxxorArea = false;
-			lastAreaCheckTime = -1;
-			return;
-		}
-
-		if (!isFightActive)
-		{
-			return;
-		}
-
-		if (AraxxorEggType.isEgg(npcId) && !araxxorReachedZeroHp)
-		{
-			if (currentGameTick > EARLY_DESPAWN_THRESHOLD)
+			NPC npc = event.getNpc();
+			if (npc == null)
 			{
-				handleEggDespawned(npcId);
+				return;
 			}
-		}
+			
+			int npcId = npc.getId();
 
-		if (AraxxorEggType.isMinion(npcId))
-		{
-			handleMinionDespawned(npcId);
+			if (npcId == ARAXXOR_NPC_ID || npcId == ARAXXOR_DEAD_ID)
+			{
+				stopFight();
+				araxxorNpc = null;
+				cachedInAraxxorArea = false;
+				lastAreaCheckTime = -1;
+				return;
+			}
+
+			if (!isFightActive)
+			{
+				return;
+			}
+
+			if (AraxxorEggType.isEgg(npcId) && !araxxorReachedZeroHp)
+			{
+				if (currentGameTick > EARLY_DESPAWN_THRESHOLD)
+				{
+					handleEggDespawned(npcId);
+				}
+			}
+
+			if (AraxxorEggType.isMinion(npcId))
+			{
+				handleMinionDespawned(npcId);
 		}
 	}
 	
 	@Subscribe
 	public void onChatMessage(ChatMessage event)
-	{
-		if (event.getType() != ChatMessageType.GAMEMESSAGE && event.getType() != ChatMessageType.SPAM)
 		{
-			return;
-		}
-		
-		if (!araxxorReachedZeroHp || fightEndTime != -1)
-		{
-			return;
-		}
-		
-		String message = event.getMessage();
-		java.util.regex.Matcher matcher = ARAXXOR_KILL_TIME_PATTERN.matcher(message);
-		
-		if (matcher.find())
-		{
-			String timeString = matcher.group("time");
-			long killTimeMs = parseTimeStringToMs(timeString);
-
-			if (killTimeMs > 0)
+			if (event.getType() != ChatMessageType.GAMEMESSAGE && event.getType() != ChatMessageType.SPAM)
 			{
-				fightEndTime = fightStartTime + killTimeMs;
-				updateStats();
+				return;
+			}
+			
+			if (!araxxorReachedZeroHp || fightEndTime != -1)
+			{
+				return;
+			}
+			
+			String message = event.getMessage();
+			java.util.regex.Matcher matcher = ARAXXOR_KILL_TIME_PATTERN.matcher(message);
+			
+			if (matcher.find())
+			{
+				String timeString = matcher.group("time");
+				long killTimeMs = parseTimeStringToMs(timeString);
+
+				if (killTimeMs > 0)
+				{
+					fightEndTime = fightStartTime + killTimeMs;
+					updateStats();
 			}
 		}
 	}
@@ -1361,10 +1361,10 @@ public class AraxxorPlugin extends Plugin
 			bestKillTime = killTime;
 			bestHitCount = currentFightHits;
 			bestDamageTaken = currentFightDamageTaken;
-			
+		
 			// Save normal/enrage times from this same PB kill
-			if (enrageStartTime > 0)
-			{
+		if (enrageStartTime > 0)
+		{
 				bestTimeToEnrage = enrageStartTime - fightStartTime;
 				bestTimeInEnrage = fightEndTime - enrageStartTime;
 			}
@@ -1718,98 +1718,98 @@ public class AraxxorPlugin extends Plugin
 	 */
 	@Subscribe
 	public void onServerNpcLoot(final ServerNpcLoot event)
-	{
-		final net.runelite.api.NPCComposition npc = event.getComposition();
-		int npcId = npc.getId();
-		
-		if (npcId != ARAXXOR_NPC_ID && npcId != ARAXXOR_DEAD_ID)
 		{
-			return;
-		}
-		
-		if (!araxxorReachedZeroHp)
-		{
-			return;
-		}
-		
-		AraxxorKillRecord kill = new AraxxorKillRecord();
-		kill.setTimestamp(System.currentTimeMillis());
-		kill.setKillTime(getElapsedTime());
-		kill.setRotation(currentRotationStart);
-		kill.setHits(currentFightHits);
-		kill.setDamageDealt(currentFightDamageDealt);
-		kill.setDamageTaken(currentFightDamageTaken);
-		
-		long totalValue = 0;
-		for (ItemStack item : event.getItems())
-		{
-			int itemId = item.getId();
-			kill.getLoot().merge(itemId, (long)item.getQuantity(), Long::sum);
+			final net.runelite.api.NPCComposition npc = event.getComposition();
+			int npcId = npc.getId();
 			
-			int price;
-			if (configPanel != null)
+			if (npcId != ARAXXOR_NPC_ID && npcId != ARAXXOR_DEAD_ID)
 			{
-				configPanel.cacheItemPrice(itemId);
-				price = configPanel.getCachedItemPrice(itemId);
-				if (price <= 0)
+				return;
+			}
+			
+			if (!araxxorReachedZeroHp)
+			{
+				return;
+			}
+			
+			AraxxorKillRecord kill = new AraxxorKillRecord();
+			kill.setTimestamp(System.currentTimeMillis());
+			kill.setKillTime(getElapsedTime());
+			kill.setRotation(currentRotationStart);
+			kill.setHits(currentFightHits);
+			kill.setDamageDealt(currentFightDamageDealt);
+			kill.setDamageTaken(currentFightDamageTaken);
+			
+			long totalValue = 0;
+			for (ItemStack item : event.getItems())
+			{
+				int itemId = item.getId();
+				kill.getLoot().merge(itemId, (long)item.getQuantity(), Long::sum);
+				
+				int price;
+				if (configPanel != null)
+				{
+					configPanel.cacheItemPrice(itemId);
+					price = configPanel.getCachedItemPrice(itemId);
+					if (price <= 0)
+					{
+						price = itemManager.getItemPrice(itemId);
+					}
+				}
+				else
 				{
 					price = itemManager.getItemPrice(itemId);
 				}
+				
+				totalValue += (long)price * item.getQuantity();
+				
+				if (configPanel != null)
+				{
+					configPanel.cacheItemName(itemId);
+				}
 			}
-			else
+			kill.setLootValue(totalValue);
+			
+			long currentTime = System.currentTimeMillis();
+			boolean isNewSession = (lastKillTimestamp != -1 && (currentTime - lastKillTimestamp) > SESSION_TIMEOUT_MS);
+			
+			if (isNewSession)
 			{
-				price = itemManager.getItemPrice(itemId);
+				sessionKills.clear();
+				cachedSessionTotalValue = 0;
+				
+				if (configPanel != null)
+				{
+					configPanel.clearItemCaches();
+				}
 			}
 			
-			totalValue += (long)price * item.getQuantity();
+			lastKillTimestamp = currentTime;
+			
+			if (tripKills.size() >= MAX_TRIP_KILLS)
+			{
+				tripKills.remove(0);
+			}
+			tripKills.add(kill);
+			
+			if (sessionKills.size() >= MAX_SESSION_KILLS)
+			{
+				AraxxorKillRecord oldest = sessionKills.remove(0);
+				cachedSessionTotalValue -= oldest.getLootValue();
+				if (configManager != null)
+				{
+					configManager.unsetConfiguration("arraxxor", "kill_" + oldest.getTimestamp());
+				}
+			}
+			sessionKills.add(kill);
+			
+			cachedSessionTotalValue += totalValue;
+			
+			saveKillToConfig(kill);
 			
 			if (configPanel != null)
 			{
-				configPanel.cacheItemName(itemId);
-			}
-		}
-		kill.setLootValue(totalValue);
-		
-		long currentTime = System.currentTimeMillis();
-		boolean isNewSession = (lastKillTimestamp != -1 && (currentTime - lastKillTimestamp) > SESSION_TIMEOUT_MS);
-		
-		if (isNewSession)
-		{
-			sessionKills.clear();
-			cachedSessionTotalValue = 0;
-			
-			if (configPanel != null)
-			{
-				configPanel.clearItemCaches();
-			}
-		}
-		
-		lastKillTimestamp = currentTime;
-		
-		if (tripKills.size() >= MAX_TRIP_KILLS)
-		{
-			tripKills.remove(0);
-		}
-		tripKills.add(kill);
-		
-		if (sessionKills.size() >= MAX_SESSION_KILLS)
-		{
-			AraxxorKillRecord oldest = sessionKills.remove(0);
-			cachedSessionTotalValue -= oldest.getLootValue();
-			if (configManager != null)
-			{
-				configManager.unsetConfiguration("arraxxor", "kill_" + oldest.getTimestamp());
-			}
-		}
-		sessionKills.add(kill);
-		
-		cachedSessionTotalValue += totalValue;
-		
-		saveKillToConfig(kill);
-		
-		if (configPanel != null)
-		{
-			configPanel.refreshStats();
+				configPanel.refreshStats();
 		}
 	}
 	

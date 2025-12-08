@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.araxxortracker;
+package com.araxxortracker;
 
 import java.awt.BorderLayout;
 import java.awt.Color;

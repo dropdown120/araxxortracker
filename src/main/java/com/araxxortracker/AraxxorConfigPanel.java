@@ -1,4 +1,4 @@
-package net.runelite.client.plugins.araxxortracker;
+package com.araxxortracker;
 
 import com.google.common.base.MoreObjects;
 import java.awt.BorderLayout;

@@ -26,7 +26,7 @@ dependencies {
 	testImplementation group: 'net.runelite', name:'jshell', version: runeLiteVersion
 }
 
-group = 'net.runelite.client.plugins.araxxortracker'
+group = 'com.araxxortracker'
 version = '1.0-SNAPSHOT'
 
 tasks.withType(JavaCompile).configureEach {
@@ -38,7 +38,7 @@ tasks.register('shadowJar', Jar) {
 	dependsOn configurations.testRuntimeClasspath
 	manifest {
 		attributes(
-			'Main-Class': 'net.runelite.client.plugins.araxxortracker.AraxxorPluginTest',
+			'Main-Class': 'com.araxxortracker.AraxxorPluginTest',
 			'Multi-Release': true
 		)
 	}
@@ -67,6 +67,6 @@ tasks.register('runClient', JavaExec) {
 	group = 'application'
 	description = 'Run RuneLite with the plugin loaded'
 	classpath = sourceSets.test.runtimeClasspath
-	mainClass = 'net.runelite.client.plugins.araxxortracker.AraxxorPluginTest'
+	mainClass = 'com.araxxortracker.AraxxorPluginTest'
 	jvmArgs = ['-ea']
 }
