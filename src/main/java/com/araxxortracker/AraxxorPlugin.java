@@ -372,22 +372,18 @@ public class AraxxorPlugin extends Plugin
 			try
 			{
 				loadStats();
-				System.out.println("[Araxxor] Stats loaded - killCount=" + killCount + ", bestKillTime=" + bestKillTime);
 				loadKillsFromConfig();
-				System.out.println("[Araxxor] Kills loaded - sessionKills.size()=" + sessionKills.size());
 				// Update UI on Swing EDT after data is loaded
 				if (configPanel != null)
 				{
 					javax.swing.SwingUtilities.invokeLater(() -> {
 						configPanel.refreshStats();
-						System.out.println("[Araxxor] UI refreshed");
 					});
 				}
 			}
 			catch (Exception e)
 			{
-				System.err.println("[Araxxor] Error loading data: " + e.getMessage());
-				e.printStackTrace();
+				// Silently handle loading errors
 			}
 		}, "AraxxorDataLoader").start();
 	}
