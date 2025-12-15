@@ -47,7 +47,7 @@ import net.runelite.client.callback.ClientThread;
 
 @PluginDescriptor(
 	name = "Araxxor Tracker",
-	description = "Comprehensive Araxxor boss fight tracker with mechanics, timing, and phase detection",
+	description = "Araxxor boss fight tracker with kill times, splits, and loot tracking",
 	tags = {"boss", "combat", "timer", "araxxor", "pvm"},
 	enabledByDefault = true
 )
@@ -132,6 +132,9 @@ public class AraxxorPlugin extends Plugin
 	
 	@Getter
 	private WorldPoint firstEggPosition = null;
+	
+	@Getter
+	private WorldPoint bossDeathLocation = null;
 	
 	@Getter
 	private AraxxorEggType firstEggType = null;
@@ -495,6 +498,7 @@ public class AraxxorPlugin extends Plugin
 		{
 			araxxorReachedZeroHp = true;
 			deathTime = System.currentTimeMillis();
+			bossDeathLocation = ((NPC) event.getActor()).getWorldLocation();
 		}
 	}
 
@@ -759,6 +763,7 @@ public class AraxxorPlugin extends Plugin
 		firstEggType = null;
 		currentRotationStart = null;
 		firstEggPosition = null;
+		bossDeathLocation = null;
 
 		for (int i = 0; i < eggTimingsCount; i++)
 		{

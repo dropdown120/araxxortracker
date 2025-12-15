@@ -269,7 +269,7 @@ class AraxxorWorldOverlay extends Overlay
 		}
 		else if (stats.rotation != null)
 		{
-			String rotationText = stats.rotation.getIcon() + " " + stats.rotation.getAttackName();
+			String rotationText = stats.rotation.getIcon() + " " + stats.rotation.getName();
 			timeLines.add(new MetricLine("Rot:", rotationText, stats.rotation.getColor()));
 		}
 		
@@ -844,6 +844,11 @@ class AraxxorWorldOverlay extends Overlay
 	
 	private WorldPoint getBossDeathLocation()
 	{
+		if (plugin.getBossDeathLocation() != null)
+		{
+			return plugin.getBossDeathLocation();
+		}
+		
 		if (plugin.getAraxxorNpc() != null)
 		{
 			WorldPoint location = plugin.getAraxxorNpc().getWorldLocation();
@@ -851,11 +856,6 @@ class AraxxorWorldOverlay extends Overlay
 			{
 				return location;
 			}
-		}
-		
-		if (plugin.getFirstEggPosition() != null)
-		{
-			return plugin.getFirstEggPosition();
 		}
 		
 		return null;

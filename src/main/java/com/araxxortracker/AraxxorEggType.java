@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2024
+ * Copyright (c) 2025
  * All rights reserved.
  *
  * Redistribution and use in source and binary forms, with or without
@@ -31,28 +31,19 @@ import lombok.Getter;
 import lombok.RequiredArgsConstructor;
 
 /**
- * Represents the three types of Araxxor eggs and their associated mechanics
+ * Represents the three types of Araxxor eggs for rotation tracking
  */
 @Getter
 @RequiredArgsConstructor
 public enum AraxxorEggType
 {
-	WHITE(13670, 13671,
-		"Acid Splatter", "Avoid acid splatter on ground",
-		new Color(220, 220, 220), "◯"),
-
-	RED(13672, 13673,
-		"Acid Drip", "Move away from acid drip",
-		new Color(220, 20, 20), "◯"),
-
-	GREEN(13674, 13675,
-		"Acid Ball", "Avoid acid ball projectiles",
-		new Color(20, 200, 20), "◯");
+	WHITE(13670, 13671, "White", new Color(220, 220, 220), "◯"),
+	RED(13672, 13673, "Red", new Color(220, 20, 20), "◯"),
+	GREEN(13674, 13675, "Green", new Color(20, 200, 20), "◯");
 
 	private final int eggNpcId;
 	private final int minionNpcId;
-	private final String attackName;
-	private final String tip;
+	private final String name;
 	private final Color color;
 	private final String icon;
 

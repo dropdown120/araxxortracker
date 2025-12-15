@@ -622,7 +622,7 @@ class AraxxorOverlay extends OverlayPanel
 		int fmHeight = fm.getHeight();
 		int yPos = lineBounds.y + fmHeight;
 		
-		String rightText = rotationInfo.rotation.getIcon() + " (" + rotationInfo.rotation.getAttackName() + ")";
+		String rightText = rotationInfo.rotation.getIcon() + " (" + rotationInfo.rotation.getName() + ")";
 		int rightTextWidth = fm.stringWidth(rightText);
 		int lineWidth = lineBounds.width;
 		int rightTextStartX = lineBounds.x + lineWidth - rightTextWidth;
